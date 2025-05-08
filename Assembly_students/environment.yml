@@ -1,4 +1,4 @@
-name: "myenv"
+name: "block"
 channels:
   - conda-forge
   - pytorch
@@ -6,8 +6,9 @@ channels:
   - anaconda
 
 dependencies:
+  - pip
   - python=3.10
-  - pytorch::pytorch=2.3.1
+  - pytorch=2.3.1
   - anaconda::numpy=1.26.0 
   - matplotlib
   - shapely=2.0.3
