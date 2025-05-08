@@ -1,10 +1,11 @@
 import matplotlib.pyplot as plt
-from rendering import plot_assembly_env, plot_task
-#from tree import  ExtendedTree, Action
-from tasks import Bridge
+
 from assembly_env import AssemblyEnv
 from blocks import Floor
+from rendering import plot_assembly_env, plot_task
 
+# from tree import  ExtendedTree, Action
+from tasks import Bridge
 
 task = Bridge(num_stories=2)
 
@@ -20,9 +21,9 @@ while not done:
     obs, r, done = env.step(action)
     rewards += r
     print(env.is_stable())
-    
+
 print(rewards)
 
 plot_assembly_env(env, task=task)
-plt.axis('equal')
+plt.axis("equal")
 plt.show()
