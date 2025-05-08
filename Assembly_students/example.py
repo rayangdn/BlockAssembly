@@ -4,6 +4,7 @@ from rendering import plot_assembly_env, plot_task
 from tasks import Empty, Bridge, Tower, DoubleBridge
 from assembly_env import AssemblyEnv
 from blocks import Floor
+from rendering import plot_assembly_env, plot_task
 
 # task = Empty(shapes=[Floor(xlim=(-5, 5))])
 # task = Bridge(num_stories=2)
@@ -26,5 +27,5 @@ while not done:
 print(rewards)
 
 plot_assembly_env(env, task=task)
-plt.axis('equal')
+plt.axis("equal")
 plt.show()

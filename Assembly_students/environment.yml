@@ -4,7 +4,6 @@ channels:
   - pytorch
   - nvidia
   - anaconda
-
 dependencies:
   - pip
   - python=3.10
@@ -14,8 +13,11 @@ dependencies:
   - shapely=2.0.3
   - conda-forge::ipopt=3.14.16
   - pip:
-    - compas==2.1.1
-    - compas-cra==0.4.0
-    - portalocker
-
-prefix: "/opt/conda"
+      - compas==2.1.1
+      - compas-cra==0.4.0
+      - portalocker
+      - gymnasium
+      - stable-baselines3
+      - sb3-contrib
+      - wandb
+prefix: /opt/conda
