@@ -12,8 +12,12 @@ env = AssemblyEnv(task)
 done = False
 rewards = 0
 
+plot_assembly_env(env, task=task, face_numbers=True)
+
+
 while not done:
     action = env.random_action(non_colliding=True, stable=False)
+    print(action)
     if action is None:
         break
     print(action)
@@ -23,6 +27,6 @@ while not done:
     
 print(rewards)
 
-plot_assembly_env(env, task=task)
+plot_assembly_env(env, task=task, face_numbers=True)
 plt.axis('equal')
 plt.show()

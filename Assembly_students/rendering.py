@@ -43,6 +43,10 @@ def plot_assembly_env(assembly, fig=None, ax=None, plot_forces=False, force_scal
     #     bounds = assembly.assembly_env.bounds
     #     assembly = assembly.assembly_env.cra_assembly
 
+    if assembly.__class__.__name__ == "AssemblyGymEnv":
+        print("AssemblyGymEnv")
+        assembly = assembly.return_env()
+
     # if graph is None:
     graph = assembly.graph
     if fig is None:
