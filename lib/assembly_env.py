@@ -122,12 +122,12 @@ class AssemblyEnv(CRA_Assembly):
         # create and add block to environment
         new_block = self.create_block(action)
         if self.collision(new_block):
-            # print("Collision")
+            #print("Collision")
             return None, torch.tensor(0.), True
         
         self.add_block(new_block)
         if not self.is_stable():
-            # print("Unstable")
+            #print("Unstable")
             return None, torch.tensor(0.), True
         
         action_feature = render_block_2d(
@@ -136,7 +136,6 @@ class AssemblyEnv(CRA_Assembly):
             zlim=self.zlim, 
             img_size=self.img_size
         ).unsqueeze(0)
-        
         self.state_feature = torch.minimum(
                 self.state_feature + action_feature, 
                 torch.tensor(1.0)
@@ -147,7 +146,7 @@ class AssemblyEnv(CRA_Assembly):
                 self.num_targets_reached += 1
         
         reward = torch.sum(action_feature * self.reward_feature, dim=(-1, -2)).flatten()[0]
-        terminated = (len(self.block_list)-1 >= self.max_blocks) | self.num_targets_reached == len(self.task.targets)
+        terminated = (len(self.block_list) - 1 >= self.max_blocks) | self.num_targets_reached == len(self.task.targets)
         
         return self.state_feature, reward, terminated
 
@@ -169,7 +168,7 @@ class AssemblyEnv(CRA_Assembly):
                             l1 = block.face_length_2d(target_face)
                             l2 = shape.face_length_2d(face)
                             offset_range = (1 - overlap) * (l1 + l2) / 2
-                            offsets = np.linspace(-offset_range, offset_range, num_block_offsets + 2, endpoint=True)[1:-1]
+                            offsets = np.linspace(-offset_range, offset_range, num_block_offsets+2, endpoint=True)[1:-1]
                             #print(f"Offsets: {offsets}")
                             
                         for offset_x in offsets:

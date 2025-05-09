@@ -135,7 +135,7 @@ def main():
     epsilon_decay = 10000
     batch_size = 32
     replay_buffer_size = 10000
-    num_episodes = 4000
+    num_episodes = 1000
     target_update = 10
     
     # Initialize agent and replay buffer
@@ -207,9 +207,9 @@ def main():
         plt.title(f"Episode {i+1} - Final Assembly")
         plt.savefig(f"dqn_episode_{i+1}_final.png")
         plt.show()
-    # # Plot the initial state feature map
+    # Plot the initial state feature map
     # plt.figure(figsize=(8, 6))
-    # plt.imshow(env.state_feature.permute(1, 2, 0).numpy(), cmap='viridis', origin='upper')
+    # plt.imshow(env.state_feature, cmap='viridis', origin='upper')
     # plt.colorbar(label='Feature Value')
     # plt.title('Initial State Feature Map')
     # plt.xlabel('X-axis')
@@ -219,7 +219,7 @@ def main():
     
     # # Plot the reward feature map
     # plt.figure(figsize=(8, 6))
-    # plt.imshow(env.reward_feature.numpy(), cmap='plasma', origin='upper')
+    # plt.imshow(env.reward_feature, cmap='plasma', origin='upper')
     # plt.colorbar(label='Reward Value')
     # plt.title('Reward Feature Map')
     # plt.xlabel('X-axis')
@@ -233,58 +233,5 @@ def main():
     # plt.axis('equal')
     # plt.show()
     
-#     # Determine action space size
-#     all_actions = env.available_actions(num_block_offsets=1)
-#     action_space_size = len(all_actions)
-
-#     # Create agent
-#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#     agent = DQNAgent(env.img_size, action_space_size, device=device)
-    
-#     # Train agent
-#     rewards = train_agent(env, agent, num_episodes=500)
-    
-#     # Save trained model
-#     agent.save("assembly_dqn.pt")
-    
-#     # Plot training progress
-#     plt.figure(figsize=(10, 5))
-#     plt.plot(rewards)
-#     plt.xlabel('Episode')
-#     plt.ylabel('Reward')
-#     plt.title('Training Progress')
-#     plt.savefig('training_progress.png')
-    
-#     # Test the trained agent
-#     test_agent(env, agent)
-
-# def test_agent(env, agent, num_episodes=5):
-#     for episode in range(num_episodes):
-#         env.reset()
-#         done = False
-#         total_reward = 0
-        
-#         while not done:
-#             available_actions = env.available_actions(num_block_offsets=5)
-#             if not available_actions:
-#                 break
-                
-#             state = env.state_feature.numpy()
-#             action_idx = agent.select_action(state, available_actions)
-#             action = available_actions[action_idx]
-            
-#             _, reward, done = env.step(action)
-#             total_reward += reward.item()
-        
-#         print(f"Test Episode {episode}, Total Reward: {total_reward:.4f}")
-        
-#         # Plot final configuration
-
-#         plt.figure(figsize=(10, 10))
-#         plot_assembly_env(env, task=env.task)
-#         plt.axis('equal')
-#         plt.savefig(f'test_episode_{episode}.png')
-#         plt.close()
-
 if __name__ == "__main__":
     main()
