@@ -9,14 +9,10 @@ class AssemblyCNN(BaseFeaturesExtractor):
     def __init__(self, observation_space, features_dim=256):
         super().__init__(observation_space, features_dim)
         
-        # Get the shape of the input images
-        # Assuming observation is a single-channel 2D grid
-        n_input_channels = 1
-        
         # CNN architecture
         self.cnn = nn.Sequential(
             # First convolutional layer
-            nn.Conv2d(n_input_channels, 32, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(2),
             
