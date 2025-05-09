@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import random
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
-from tasks import Bridge
 from assembly_env import AssemblyEnv, Action
 from rendering import plot_assembly_env
 from blocks import Floor
@@ -248,7 +247,7 @@ class AssemblyGymEnv(gym.Env):
     
 # def main():
 #     task = Bridge(num_stories=2)
-#     wrapped_env = AssemblyGymEnv(task, max_blocks=2)
+#     wrapped_env = AssemblyGymEnv(task, max_blocks=5)
     
 #     done = False
 #     rewards = 0
@@ -257,24 +256,24 @@ class AssemblyGymEnv(gym.Env):
 #         action_idx = wrapped_env.random_action(non_colliding=True, stable=True)
 #         if action_idx is None:
 #             break
-#         obs, r, done, info = wrapped_env.step(action_idx)
+#         obs, r, done, truncated, info = wrapped_env.step(action_idx)
 #         print(info)
 
-#         if done:
+#         if done or truncated:
 #             break
 
 #         rewards += r
 #     wrapped_env.render(mode='human')
-    # obs, _ = wrapped_env.reset()
+#     #obs, _ = wrapped_env.reset()
     
     
-    # plt.figure(figsize=(8, 6))
-    # plt.imshow(obs_img, cmap='viridis', origin='upper')
-    # plt.colorbar(label='Feature Value')
-    # plt.title('Initial State Feature Map')
-    # plt.xlabel('X-axis')
-    # plt.ylabel('Z-axis')
-    # plt.show()
+#     # plt.figure(figsize=(8, 6))
+#     # plt.imshow(obs_img, cmap='viridis', origin='upper')
+#     # plt.colorbar(label='Feature Value')
+#     # plt.title('Initial State Feature Map')
+#     # plt.xlabel('X-axis')
+#     # plt.ylabel('Z-axis')
+#     # plt.show()
      
 # if __name__ == "__main__":
 #     main()
