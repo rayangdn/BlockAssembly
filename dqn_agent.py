@@ -3,6 +3,7 @@ import torch as th
 import torch.nn as nn
 
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from stable_baselines3 import DQN
 
 # Custom CNN feature extractor for the assembly environment
 class AssemblyCNN(BaseFeaturesExtractor):
@@ -53,3 +54,4 @@ class AssemblyCNN(BaseFeaturesExtractor):
         # Pass through linear layers
         return self.linear(cnn_features)
 
+ 

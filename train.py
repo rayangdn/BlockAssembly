@@ -1,17 +1,20 @@
 import os
 import sys
 import time
+import torch
 from stable_baselines3 import DQN
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.monitor import Monitor
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
-from  assembly_gym_env import AssemblyGymEnv
 from tasks import Bridge
+from assembly_gym_env import AssemblyGymEnv
 from dqn_agent import AssemblyCNN
 
 
 def main():
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
     
     # Create log directory
     log_dir = "dqn_assembly_logs"
