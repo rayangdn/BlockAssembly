@@ -44,7 +44,6 @@ def plot_assembly_env(assembly, fig=None, ax=None, plot_forces=False, force_scal
     #     assembly = assembly.assembly_env.cra_assembly
 
     if assembly.__class__.__name__ == "AssemblyGymEnv":
-        print("AssemblyGymEnv")
         assembly = assembly.return_env()
 
     # if graph is None:

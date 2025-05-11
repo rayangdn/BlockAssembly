@@ -1,0 +1,29 @@
+# Ignore evaluation logs, checkpoints, and output folders
+
+# Evaluation logs and results
+eval_logs/
+logs/
+ppo_assembly_tensorboard/
+ppo_checkpoints/
+best_model/
+valid_plots/
+
+# Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment and config files
+*.env
+*.yaml
+*.yml
+
+# Jupyter and notebook checkpoints
+.ipynb_checkpoints/
+
+# MacOS system files
+.DS_Store
+
+# VSCode settings
+.vscode/

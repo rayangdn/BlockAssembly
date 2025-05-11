@@ -1,109 +1,102 @@
-from multiprocessing import freeze_support
-import sys, os
-import numpy as np
+import os
 import torch
-import gymnasium as gym
-from assembly_env import AssemblyGymEnv
-from tasks import Bridge
+import numpy as np
+import yaml
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from stable_baselines3.common.utils import set_random_seed
+from tasks import Bridge
+from assembly_env_copy import AssemblyGymEnv
+from cause_logging_callback import CauseLoggingCallback
+import tasks
 
-from stable_baselines3.common.callbacks import BaseCallback
+# Load training configuration
+with open("config.yaml", "r") as f:
+    config = yaml.safe_load(f)
+# wrapper settings
+env_cfg = config["env"]
+wrapper_cfg = config["env_wrappers"]
+seed = wrapper_cfg["seed"]
+n_envs = wrapper_cfg["n_envs"]
+eval_envs_count = wrapper_cfg.get("eval_envs", 1)
 
-class CauseLoggingCallback(BaseCallback):
-    def __init__(self, verbose=0):
-        super().__init__(verbose)
-        self.cause_counts = {
-            'collision': 0,
-            'unstable': 0,
-            'invalid_target_block': 0,
-            'invalid_target_face_floor': 0,
-            'invalid_offset_x_cube': 0,
-            'invalid_offset_x_trapezoid_3': 0,
-            'other': 0
-        }
-
-    def _on_step(self) -> bool:
-        # Info dicts are accessible via self.locals
-        infos = self.locals.get("infos", [])
-        for info in infos:
-            cause = info.get("cause", "other")
-            if cause in self.cause_counts:
-                self.cause_counts[cause] += 1
-            else:
-                self.cause_counts["other"] += 1
-        
-        # Log to TensorBoard
-        for cause, count in self.cause_counts.items():
-            self.logger.record(f"failures/{cause}", count)
-
-        return True
-
-def make_env():
+def make_env(rank: int):
     def _init():
-        env = AssemblyGymEnv(task=Bridge(num_stories=1))
+        # build Task from config
+        task_conf = config['task']
+        task_fn = getattr(tasks, task_conf['type'])
+        task_args = {k: v for k, v in task_conf.items() if k != 'type'}
+        task = task_fn(**task_args)
+        # init environment with configured params
+        env = AssemblyGymEnv(task=task, **env_cfg)
+        env.seed(seed + rank)
         return Monitor(env)
+    set_random_seed(seed + rank)
     return _init
 
 def main():
-    device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+    # 1) Seed
+    set_random_seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
-    # ——— Parallel training env ———
-    n_envs = 8
-    train_vec = SubprocVecEnv([make_env() for _ in range(n_envs)])
-    train_vec = VecNormalize(train_vec, norm_obs=True, norm_reward=True, clip_reward=10.0)
+    # 2) Parallel train envs
+    train_envs = SubprocVecEnv([make_env(i) for i in range(n_envs)])
 
-    os.makedirs("ppo_checkpoints", exist_ok=True)
-    train_vec.save("ppo_checkpoints/vecnormalize.pkl")
+    # 3) Eval env (offset seed by +100)
+    eval_env = DummyVecEnv([make_env(100)])
 
-    # ——— Build & train ———
+    # 4) Callbacks
+    os.makedirs("logs/checkpoints", exist_ok=True)
+    ck_cfg = config['checkpoint']
+    checkpoint_cb = CheckpointCallback(
+        save_freq=ck_cfg['save_freq'],
+        save_path=ck_cfg['save_path'],
+        name_prefix=ck_cfg['name_prefix']
+    )
+    ev_cfg = config['evaluation']
+    eval_cb = EvalCallback(
+        eval_env,
+        best_model_save_path=ev_cfg['best_model_save_path'],
+        log_path=ev_cfg['log_path'],
+        eval_freq=ev_cfg['eval_freq'],
+        deterministic=ev_cfg['deterministic'],
+        render=ev_cfg['render']
+    )
+    cause_cb = CauseLoggingCallback()
+
+    # 5) Model
+    ppo_cfg = config['ppo']
+    device = torch.device(ppo_cfg.get('device', 'cpu')) if ppo_cfg['device'] != 'auto' else (
+        torch.device('mps') if torch.backends.mps.is_available() else torch.device('cpu')
+    )
     model = PPO(
-        "CnnPolicy",
-        train_vec,
-        learning_rate=5e-5,
-        n_steps=256,
-        batch_size=64,
-        n_epochs=20,
-        gamma=0.99,
-        gae_lambda=0.95,
-        clip_range=0.1,
-        ent_coef=0.005,
-        target_kl=0.02,
-        policy_kwargs={'normalize_images' : False, "net_arch": dict(pi=[128, 128],
-        vf=[256, 256])},
-        tensorboard_log="./ppo_assembly_tensorboard/",
+        ppo_cfg['policy'],
+        train_envs,
+        learning_rate=float(ppo_cfg['learning_rate']),  # <-- Ensure float type
+        n_steps=ppo_cfg['n_steps'],
+        batch_size=ppo_cfg['batch_size'],
+        n_epochs=ppo_cfg['n_epochs'],
+        clip_range=ppo_cfg['clip_range'],
+        gamma=ppo_cfg['gamma'],
+        ent_coef=ppo_cfg['ent_coef'],
+        target_kl=ppo_cfg['target_kl'],
+        policy_kwargs=ppo_cfg['policy_kwargs'],
         device=device,
         verbose=1,
+        tensorboard_log=ppo_cfg.get('tensorboard_log', './ppo_assembly_tensorboard/')
     )
 
-    checkpoint_cb = CheckpointCallback(
-        save_freq=10000,
-        save_path="./ppo_checkpoints/",
-        name_prefix="ppo_assembly",
-    )
-    eval_cb = EvalCallback(
-        eval_env=VecNormalize(
-            SubprocVecEnv([make_env()]),
-            norm_obs=True, norm_reward=True, clip_reward=10.0
-        ),
-        eval_freq=10_000,
-        n_eval_episodes=5,
-        log_path="./eval_logs/",
-        best_model_save_path="./best_model/",
-        deterministic=True,
-        render=False,
-    )
-
+    # 6) Train
     model.learn(
-        total_timesteps=1_000_000,
-        log_interval=1,
-        callback=[checkpoint_cb, CauseLoggingCallback()]
+        total_timesteps=config.get('total_timesteps', 200_000),
+        callback=[checkpoint_cb, eval_cb, cause_cb]
     )
-    model.save("ppo_assembly_bridge_cnn")
+
+    # 7) Save final model
+    model.save(config.get('output_model_path', 'ppo_checkpoints/ppo_raw_env.zip'))
 
 if __name__ == "__main__":
-    # on Windows/macOS spawn mode, needed for safety
-    freeze_support()
     main()

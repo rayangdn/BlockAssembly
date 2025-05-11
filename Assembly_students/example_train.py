@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 from rendering import plot_assembly_env, plot_task
 #from tree import  ExtendedTree, Action
 from tasks import Bridge
-from assembly_env import AssemblyGymEnv 
+from assembly_env_copy import AssemblyGymEnv 
 from blocks import Floor # You'll need to import your Task class
 import os
 
@@ -15,102 +15,59 @@ from collections import namedtuple
 Action = namedtuple("Action", ["target_block", "target_face", "shape", "face", "offset_x"])
 
 
-def random_action_generator_float(max_blocks=5,
-                                  xlim=(-4.0, 4.0),
-                                  valid_shapes=(0, 1)):
-    # Define every component as a continuous Box so samples are floats
+
+def random_action_generator(max_blocks, xlim, valid_shapes, block_list_size):
     action_space = spaces.Dict({
-        'target_block': spaces.Box(low=0.0,
-                                   high=float(max_blocks - 1),
-                                   shape=(1,),
-                                   dtype=np.float32),
-        'target_face': spaces.Box(low=0.0,
-                                  high=3.0,
-                                  shape=(1,),
-                                  dtype=np.float32),
-        'shape': spaces.Box(low=0.0,
-                            high=float(len(valid_shapes) - 1),
-                            shape=(1,),
-                            dtype=np.float32),
-        'face': spaces.Box(low=0.0,
-                           high=3.0,
-                           shape=(1,),
-                           dtype=np.float32),
-        'offset_x': spaces.Box(low=float(xlim[0]),
-                               high=float(xlim[1]),
-                               shape=(1,),
-                               dtype=np.float32),
-    })
-
-    sample = action_space.sample()
-
-    # Round & clip the shape index back to a valid integer, then map
-    raw_shape_idx = int(np.clip(np.round(sample['shape'][0]), 0, len(valid_shapes)-1))
-    shape_id = valid_shapes[raw_shape_idx]
-
-    return {
-        'target_block': float(sample['target_block'][0]),
-        'target_face':  float(sample['target_face'][0]),
-        'shape':        float(shape_id),
-        'face':         float(sample['face'][0]),
-        'offset_x':     float(sample['offset_x'][0]),
-    }
-
-def random_action_generator(max_blocks = 5, xlim = [-4, 4], valid_shapes=[0, 1]):
-    action_space = spaces.Dict({
-        'target_block': spaces.Discrete(max_blocks),
+        'target_block': spaces.Discrete(block_list_size),  # Use block_list_size instead of max_blocks
         'target_face': spaces.Discrete(4),
         'shape': spaces.Discrete(len(valid_shapes)),
         'face': spaces.Discrete(4),
-        'offset_x': spaces.Box(low=float(xlim[0]), high=float(xlim[1]), shape=(1,), dtype=np.float32),
+        'offset_x': spaces.Discrete(10),
     })
 
-    
     sample = action_space.sample()
-
-    # Map shape index (0 or 1) to actual shape ID (e.g., 1 or 5)
     shape_id = valid_shapes[sample['shape']]
 
-    return {
-        'target_block': sample['target_block'],
-        'target_face': sample['target_face'],
-        'shape': shape_id,
-        'face': sample['face'],
-        'offset_x': float(sample['offset_x'][0])  # Extract scalar
-    }
+    return np.array([
+        sample['target_block'],  # Fixed: replaced action_dict with sample
+        sample['target_face'],  # Fixed: replaced action_dict with sample
+        shape_id,               # Use shape_id directly
+        sample['face'],         # Fixed: replaced action_dict with sample
+        sample['offset_x']      # Fixed: replaced action_dict with sample
+    ]).astype(int)
 
 # Create an instance of the task
-task=Bridge(num_stories=1)
+task=Bridge(num_stories=1, width=2)
 
 #create instance of AssemblyGymenvironment
 env = AssemblyGymEnv(task=task)
 done = False
+truncated = False
 rewards = 0
 obs, info = env.reset()  # Newer gym versions return (obs, info)
 
 
 valid_figs = []
 
-while not done:
+while not (done or truncated):
     #action = env.random_action()
-    action_dict = random_action_generator_float(max_blocks=5, xlim=[-5, 5], valid_shapes=[0, 1])
-    print(action_dict)
+    action_array = random_action_generator(
+        max_blocks=5,
+        xlim=[-1, 1],
+        valid_shapes=[0, 1],
+        block_list_size=len(env.env.block_list)
+    )
 
-    action_array = [
-            action_dict['target_block'],
-            action_dict['target_face'],
-            action_dict['shape'],
-            action_dict['face'],
-            action_dict['offset_x']
-        ]
 
+    # Pass the Action object to env.env.step
     obs, reward, done, truncated, info = env.step(action_array)
     rewards += reward
-    print(rewards)
-    print('-----------------------')
-    print(info['cause'])
-    print('-----------------------')
+    if done or truncated:
+        print(f"last{reward}")
+        break
 
+
+print(f"Total reward: {rewards}")
 
 
 
@@ -119,6 +76,8 @@ plot_assembly_env(assembly_env, task=task, face_numbers=True)
 plt.axis('equal')
 
 block_map, face_map = obs  # shape: (64, 64) from (1, 64, 64)
+
+
 plt.figure(figsize=(10,4))
 
 plt.subplot(1,2,1)

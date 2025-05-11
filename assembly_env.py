@@ -22,7 +22,6 @@ import numpy as np
 
 from blocks import Cube, Trapezoid
 
-
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="compas.geometry.point")
 
@@ -39,14 +38,14 @@ class Action:
     def __hash__(self):
         return hash((self.target_block, self.target_face, self.shape, self.face, self.offset_x))
     
-def gaussian(loc, xlim, zlim, img_size=(64, 64), sigma_x=2, sigma_y=4):
+def gaussian(loc, xlim, zlim, img_size=(64, 64), sigma_x=0.6, sigma_y=1.0):
     x, y = loc
     X, Y = np.meshgrid(np.linspace(*xlim, img_size[0]), np.linspace(zlim[1], zlim[0], img_size[1]))
     return np.exp(-(((X - x)**2 / (2 * sigma_x**2)) + ((Y - y)**2 / (2 * sigma_y**2)))).reshape(img_size)
 
 class AssemblyEnv(CRA_Assembly):
 
-    def __init__(self, task, max_blocks=4, xlim=(-5, 5), zlim=(0, 10), img_size=(64, 64), mu=0.8, density=1.0):
+    def __init__(self, task, max_blocks=5, xlim=(-5, 5), zlim=(0, 10), img_size=(64, 64), mu=0.8, density=1.0):
         super().__init__()
         self.task = task
         self.xlim = xlim
@@ -64,11 +63,14 @@ class AssemblyEnv(CRA_Assembly):
         self.current_step  = 0
         self.num_faces = 4
         
-        self.reward_feature = self.get_reward_features(sigma_x=0.3, sigma_y=0.8)
+        self.reward_feature = self.get_reward_features(sigma_x=0.5, sigma_y=1.0)
 
         C, H, W = 2, *self.img_size
         self.state_feature = torch.zeros((C, H, W), dtype=torch.float32)
-
+        # on affiche aussi les obstacles dès le départ
+        self._render_obstacles()
+        # on affiche aussi les goals
+        self._render_goals()
 
     def reset(self, obstacles=None):
         self.delete_blocks()
@@ -81,6 +83,32 @@ class AssemblyEnv(CRA_Assembly):
         self.num_targets_reached = 0
         C, H, W = 2, *self.img_size
         self.state_feature = torch.zeros((C, H, W), dtype=torch.float32)
+        # et on ré‐affiche les obstacles
+        self._render_obstacles()
+        # et on ré‐affiche les goals
+        self._render_goals()
+
+    def _render_obstacles(self):
+        """Overlay des obstacles sur les canaux 0 et 1."""
+        # masque initial
+        mask = torch.zeros(self.img_size, dtype=torch.bool)
+        for obs in self.task.obstacles:
+            obs_feat = render_block_2d(obs, xlim=self.xlim, zlim=self.zlim, img_size=self.img_size)
+            mask |= obs_feat.to(torch.bool)
+        # on met 1.0 là où il y a un obstacle sur les deux canaux
+        self.state_feature[0][mask] = 1.5
+        self.state_feature[1][mask] = 1.5
+
+    def _render_goals(self):
+        """Overlay des goals (targets) sur les canaux 0 et 1."""
+        for target in self.task.targets:
+            x = target[0]
+            z = target[-1]
+            col = round((x - self.xlim[0]) / (self.xlim[1] - self.xlim[0]) * (self.img_size[1] - 1))
+            row = round((self.zlim[1] - z)    / (self.zlim[1] - self.zlim[0]) * (self.img_size[0] - 1))
+            # on met 1.0 là où il y a un goal
+            self.state_feature[0][row, col] = 2.0
+            self.state_feature[1][row, col] = 2.0
 
     def get_reward_features(self, sigma_x=0, sigma_y=0):
         reward_features = np.zeros(self.img_size)
@@ -94,7 +122,7 @@ class AssemblyEnv(CRA_Assembly):
                 y = (y - self.zlim[0]) / (self.zlim[1] - self.zlim[0])
                 reward_features[round((1-y)*self.img_size[0]), round(x*self.img_size[1])] = 1
             else:
-                reward_features += 2 * gaussian((x,y), self.xlim, self.zlim, self.img_size, sigma_x=sigma_x, sigma_y=sigma_y)
+                reward_features += 1 * gaussian((x,y), self.xlim, self.zlim, self.img_size)
         # Normalize the reward features
 
         reward_features = torch.tensor(reward_features).float()
@@ -157,7 +185,7 @@ class AssemblyEnv(CRA_Assembly):
         
         mask = action_feature.to(torch.bool)      # shape (H,W)
         # which block index just got placed?
-        # since you do `self.block_list.append(new_block)` in add_block(),
+        # since you do self.block_list.append(new_block) in add_block(),
         # the index is len(self.block_list)-1
         block_idx = len(self.block_list) - 1
     
@@ -166,10 +194,14 @@ class AssemblyEnv(CRA_Assembly):
         self.state_feature[1][mask] = (action.face + 1) / float(self.num_faces)
 
         self.current_step  += 1
-        
+
+        reward = 0
+
         for target in self.task.targets:
             if new_block.contains_2d(target):
                 self.num_targets_reached += 1
+                if len(self.block_list) - 2 >= 0:
+                    reward += 100
         
         reward = torch.sum(action_feature * self.reward_feature, dim=(-1, -2)).flatten()[0]
         terminated = (len(self.block_list)-1 >= self.max_blocks) | self.num_targets_reached == len(self.task.targets)
@@ -259,23 +291,24 @@ class AssemblyEnv(CRA_Assembly):
         if self.number_of_nodes() > 1:
             assembly_interfaces_numpy(self, amin=0.001)
 
+    def get_block(self, action):
+        if action.target_block >= len(self.block_list):
+            return False, 'none'
+        block = self.block_list[action.target_block]
+        if block.name.startswith("Cube"):
+            return True, 'cube'
+        elif action.target_face == 0 and (action.offset_x < -1.5 or action.offset_x > 1.5):
+                return True, 'trapezoid_big'
+        elif action.target_face == 3 and (action.offset_x < -0.5 or action.offset_x > 0.5):
+                return True, 'trapezoid_small'
+        elif action.offset_x < -1 or action.offset_x > 1:
+                return True, 'trapezoid_medium'
+        return False, 'invalid_block'
+
     def test(self, action : Action):
         # Check if the action is valid
-
         if action.target_block >= len(self.block_list):
             return None, 'invalid_target_block'
-        if action.target_block == 0 and action.target_face != 0:
-            return None, 'invalid_target_face_floor'
-        block = self.block_list[action.target_block]
-        if block.name.startswith("Cube") and (action.offset_x < -1 or action.offset_x > 1):
-            return None, 'invalid_offset_x_cube'
-        if block.name.startswith("Trapezoid"):
-            if action.target_face == 0 and (action.offset_x < -1.5 or action.offset_x > 1.5):
-                return None, 'invalid_offset_x_trapezoid_3'
-            elif action.target_face == 3 and (action.offset_x < -0.5 or action.offset_x > 0.5):
-                return None, 'invalid_offset_x_trapezoid_0'
-            elif action.offset_x < -1 or action.offset_x > 1:
-                return None, 'invalid_offset_x_trapezoid_1_4'
         new_block = self.create_block(action)
         if not self.collision(new_block):
             self.add_block(new_block)  
@@ -287,13 +320,31 @@ class AssemblyEnv(CRA_Assembly):
                 return None, 'unstable'
         else:
             return None, 'collision'
+        if action.target_block == 0:
+            return action, 'floor'
         return action, 'good'
+    
+    def get_target_reward(self, action: Action):
+
+        # on crée le bloc uniquement pour récupérer son frame
+        if action.target_block >= len(self.block_list):
+            return 0
+        new_block = self.create_block(action)
+        action_feature = render_block_2d(
+            new_block, 
+            xlim=self.xlim, 
+            zlim=self.zlim, 
+            img_size=self.img_size
+        )
+        reward = torch.sum(action_feature * self.reward_feature, dim=(-1, -2)).flatten()[0]
+
+        return reward
 
 class AssemblyGymEnv(gym.Env):
     """
     Gym wrapper for the Assembly Environment
     """
-    def __init__(self, task, max_blocks=4, xlim=(-5, 5), zlim=(0, 10), 
+    def __init__(self, task, max_blocks=5, xlim=(-5, 5), zlim=(0, 10), 
                  img_size=(64, 64), mu=0.8, density=1.0):
         super().__init__()
         # Store configuration locally for action_space bounds
@@ -306,13 +357,16 @@ class AssemblyGymEnv(gym.Env):
         
         # Define valid shapes and continuous Box action space
         self.valid_shapes = [1, 5]
-        self.action_space = spaces.Box(
-            low=np.array([0, 0, 0, 0, self.xlim[0]], dtype=np.float32),
-            high=np.array([self.env.max_blocks-1, 3, len(self.valid_shapes)-1, 3, self.xlim[1]], dtype=np.float32),
-            shape=(5,),
-            dtype=np.float32
-        )
-        
+        n_offsets = 10
+        self.n_offsets = n_offsets  # store offsets count on instance
+
+        self.action_space = spaces.MultiDiscrete([
+            self.env.max_blocks,     # target_block ∈ [0 .. max_blocks-1]
+            4,                       # target_face  ∈ [0 .. 3]
+            len(self.valid_shapes),  # shape_idx    ∈ [0 .. len(valid_shapes)-1]
+            4,                       # face         ∈ [0 .. 3]
+            n_offsets                # offset_idx   ∈ [0 .. n_offsets-1]
+        ])
         # Define observation space (2D image representation)
         self.observation_space = spaces.Box(
         low=0.0,
@@ -321,70 +375,116 @@ class AssemblyGymEnv(gym.Env):
         dtype=np.float32
     )
         
+        self.count = 0
+        self.minus = 0
+        
     def reset(self, seed=None, options=None):
         """Reset the environment to initial state"""
         self.env.reset()
+        self.count = 0
+
         # already shape (2,H,W)
         obs = self.env.state_feature.numpy().astype(np.float32)
         return obs, {}
     
     def step(self, action_array):
+
+        self.minus = len(self.env.block_list) - 2
+
         # action_array: [target_block, target_face, shape_idx, face, offset_x]
         if action_array is None:
             raise ValueError("Action cannot be None")
 
-        a = np.array(action_array, dtype=np.float32)
-        # Round discrete components
-        tb = int(np.clip(round(a[0]), 0, self.env.max_blocks-1))
-        tf = int(np.clip(round(a[1]), 0, 3))
-        si = int(np.clip(round(a[2]), 0, len(self.valid_shapes)-1))
-        fa = int(np.clip(round(a[3]), 0, 3))
-        ox = float(a[4])
-        shape_id = self.valid_shapes[si]
+        tb, tf, si, fa, off_idx = action_array.astype(int)
 
+        # 1) Forçage sol
         if tb == 0:
             tf = 0
 
-        '''if (tb == 0 and tf == 3):
-            tf = 0
-        elif (tb == 0 and tf == 0):
-            tf = 3'''
 
+        shape_id = self.valid_shapes[si]
 
+        # 3) Conversion de l’offset discret en valeur réelle
+        offset_values = np.linspace(-0.8, 0.8, self.n_offsets)
+        ox = float(offset_values[off_idx])
+        if tb == 0:
+            ox *= 5.0  # même logique floor si tu veux
+
+            
         action_obj = Action(target_block=tb, target_face=tf, shape=shape_id, face=fa, offset_x=ox)
+
+        
+        #check the block 
+        valid, block_type = self.env.get_block(action_obj)
+        if valid:
+            if block_type == 'cube':
+                action_obj.offset_x *= 1.0
+            elif block_type == 'trapezoid_big':
+                action_obj.offset_x *= 1.3
+            elif block_type == 'trapezoid_medium':
+                action_obj.offset_x *= 0.8
+            elif block_type == 'trapezoid_small':
+                action_obj.offset_x *= 0.5
+
+        target_reward = self.env.get_target_reward(action_obj)
+        
         action_obj, cause = self.env.test(action_obj)
-        info = {'num_blocks': len(self.env.block_list)-1, 'num_targets_reached': self.env.num_targets_reached, 'cause': cause}
+        info = {
+            'num_blocks': len(self.env.block_list)-1,
+            'num_targets_reached': self.env.num_targets_reached,
+            'cause': cause,
+            'stack': 'none',
+            'block': 'none',
+            'target_reward_good': 0,
+            'target_reward_bad': 0,
+            'validate_reward_good': 0,
+            'validate_reward_bad': 0,
+        }
         # Invalid action
-        negative_reward = -1
+        negative_reward = -2
         if action_obj is None:
             obs = self.env.state_feature.numpy().astype(np.float32)
             if info['cause'] == 'collision':
-                negative_reward = -5
+                negative_reward = - 2
             elif info['cause'] == 'unstable':
-                negative_reward = -0.5
+                negative_reward = - 2
             elif info['cause'] == 'invalid_target_block':
-                negative_reward = -2
-            elif info['cause'] == 'invalid_target_face_floor':
-                negative_reward = -10
-            elif info['cause'] == 'invalid_offset_x_cube':
-                negative_reward = -0.5
-            elif info['cause'] == 'invalid_offset_x_trapezoid_3':
-                negative_reward = -0.5
+                negative_reward = - 2
+            if tb != 0:
+                info['stack'] = 'try'
+                negative_reward += 1
+            else:
+                if self.minus >= 0:
+                    negative_reward -=  target_reward
+                    info['target_reward_bad'] = target_reward
+                else:
+                    info['target_reward_good'] = target_reward
+                info['stack'] = 'none'
             return obs, negative_reward, False, False, info
         # Execute valid action
         obs, reward, done = self.env.step(action_obj)
         # convert to numpy float32 to match observation_space
-        #print(f"Reward: {reward}")
         obs = obs.numpy().astype(np.float32)
+        if tb != 0: 
+            info['stack'] = 'done'
+            if self.count < 2:
+                reward *= -1
+                reward -= 5
+        else:
+            self.minus -= 1
+            if self.minus >= 0:
+                reward *= -2
+                reward -= 5
+                info['validate_reward_bad'] = reward
+            else:
+                if tb == 0:
+                    self.count += 1
+                reward -= 1
+                reward *= 3
+                info['validate_reward_good'] = reward
         return obs, reward, done, False, info
     
-    def render(self):
-        """Render the environment"""
-        pass
-    
-    def close(self):
-        """Clean up resources"""
-        pass
+
     
     def return_env(self):
         """Return the underlying environment"""
@@ -408,4 +508,7 @@ class AssemblyGymEnv(gym.Env):
         if action is None:
             return None
         return self.action_to_dict(action)
+    
+    def get_target_reward(self, action):
+        return self.env.get_target_reward(action)
 
