@@ -45,7 +45,7 @@ def gaussian(loc, xlim, zlim, sigma_x, sigma_y, img_size=(64, 64)):
 
 class AssemblyEnv(CRA_Assembly):
 
-    def __init__(self, task, min_block_reach_target, target_reward_per_block, max_blocks=6, xlim=(-5, 5), zlim=(0, 10), img_size=(64, 64), mu=0.8, density=1.0):
+    def __init__(self, task, min_block_reach_target, target_reward_per_block, max_blocks=6, xlim=(-5, 5), zlim=(0, 10), img_size=(64, 64), mu=0.8, density=1.0, not_reached_penalty=25):
         super().__init__()
         self.task = task
         self.xlim = xlim
@@ -55,9 +55,6 @@ class AssemblyEnv(CRA_Assembly):
         self.density = density
         self.num_targets_reached = 0
         self.max_blocks = max_blocks
-        # self.obstacles = []
-        # self.blocks = {}
-        #self.blocks = Blocks(self)
         self.block_list = [] # Blocks(self)
         self.add_block(Floor(xlim=self.xlim))
         self.current_step  = 0
@@ -65,6 +62,7 @@ class AssemblyEnv(CRA_Assembly):
 
         self.min_block_reach_target = min_block_reach_target
         self.target_reward_per_block = target_reward_per_block
+        self.not_reached_penalty = not_reached_penalty
         
         self.reward_feature = self.get_reward_features(sigma_x=1, sigma_y=1)
 
@@ -100,8 +98,8 @@ class AssemblyEnv(CRA_Assembly):
             obs_feat = render_block_2d(obs, xlim=self.xlim, zlim=self.zlim, img_size=self.img_size)
             mask |= obs_feat.to(torch.bool)
         # on met 1.0 là où il y a un obstacle sur les deux canaux
-        self.state_feature[0][mask] = 0.95
-        self.state_feature[1][mask] = 0.95
+        self.state_feature[0][mask] = 0.09
+        self.state_feature[1][mask] = 0.09
 
     def _render_goals(self):
         """Overlay des goals (targets) sur les canaux 0 et 1."""
@@ -111,8 +109,8 @@ class AssemblyEnv(CRA_Assembly):
             col = round((x - self.xlim[0]) / (self.xlim[1] - self.xlim[0]) * (self.img_size[1] - 1))
             row = round((self.zlim[1] - z)    / (self.zlim[1] - self.zlim[0]) * (self.img_size[0] - 1))
             # on met 1.0 là où il y a un goal
-            self.state_feature[0][row, col] = 0.05
-            self.state_feature[1][row, col] = 0.05
+            self.state_feature[0][row, col] = 1.0
+            self.state_feature[1][row, col] = 1.0
 
     def get_reward_features(self, sigma_x = 1, sigma_y = 1):
         reward_features = np.zeros(self.img_size)
@@ -126,7 +124,7 @@ class AssemblyEnv(CRA_Assembly):
                 y = (y - self.zlim[0]) / (self.zlim[1] - self.zlim[0])
                 reward_features[round((1-y)*self.img_size[0]), round(x*self.img_size[1])] = 1
             else:
-                reward_features += 3 * gaussian((x,y), self.xlim, self.zlim, sigma_x, sigma_y, self.img_size)
+                reward_features += 1 * gaussian((x,y), self.xlim, self.zlim, sigma_x, sigma_y, self.img_size)
         # Normalize the reward features
 
         reward_features = torch.tensor(reward_features).float()
@@ -178,6 +176,7 @@ class AssemblyEnv(CRA_Assembly):
         if not self.is_stable():
             return None, torch.tensor(0.), True
         
+        
         action_feature = render_block_2d(
             new_block, 
             xlim=self.xlim, 
@@ -194,8 +193,8 @@ class AssemblyEnv(CRA_Assembly):
         block_idx = len(self.block_list) - 1
     
         # on réserve [0.0,0.5] pour les blocs, [0.5,1.0] pour les faces
-        block_val = (block_idx + 1) / float(self.max_blocks) * 0.5
-        face_val  = 0.5 + (action.face + 1) / float(self.num_faces) * 0.5
+        block_val = 0.2 + (block_idx + 1) / float(self.max_blocks) * 0.8
+        face_val  = 0.1 + (action.face + 1) / float(self.num_faces) * 0.1
 
         self.state_feature[0][mask] = block_val
         self.state_feature[1][mask] = face_val
@@ -215,8 +214,8 @@ class AssemblyEnv(CRA_Assembly):
             else:
                 #if the goal is not reached, we add a penalty
                 # note : this is experimental remove i am trying to see if it works
-                '''if len(self.block_list) -1 == self.max_blocks:
-                    not_reached -= 25'''
+                if len(self.block_list) -1 == self.max_blocks:
+                    not_reached -= self.not_reached_penalty
 
 
         reward = torch.sum(action_feature * self.reward_feature, dim=(-1, -2)).flatten()[0] + not_reached
@@ -373,7 +372,9 @@ class AssemblyGymEnv(gym.Env):
         target_reward_per_block = 1.0,
         min_block_reach_target = 1,
         collision_penalty = 0.5,
-        unstable_penalty = 0.5
+        unstable_penalty = 0.5,
+        not_reached_penalty = 25,
+        n_floor         = 2
     ):
         # 1) Configuration principale
         self.env = AssemblyEnv(
@@ -385,11 +386,13 @@ class AssemblyGymEnv(gym.Env):
             zlim,
             img_size,
             mu,
-            density
+            density,
+            not_reached_penalty
         )
         self.valid_shapes  = list(valid_shapes)
         self.n_offsets     = n_offsets
         self.limit_steps   = limit_steps
+        self.n_floor       = n_floor
         # penalties for invalid actions
         self.collision_penalty = collision_penalty
         self.unstable_penalty = unstable_penalty
@@ -408,7 +411,6 @@ class AssemblyGymEnv(gym.Env):
         self.steps           = 0
         self.minus           = 0
         self.negative_reward = 0.0
-        self.n_floor         = 2
         self.current_reward = 0
 
     def reset(self, seed=None, obstacles=None):
@@ -524,7 +526,7 @@ class AssemblyGymEnv(gym.Env):
                 info['stack'] = 'not_try'
             if self.steps > self.limit_steps:
                 info['truncated'] = True
-                return obs, -100, False, True, info
+                return obs, -200, False, True, info
             self.current_reward += self.negative_reward
             return obs, self.negative_reward, False, False, info
         else:
@@ -534,8 +536,8 @@ class AssemblyGymEnv(gym.Env):
             obs, reward, done = self.env.step(action_obj, self.steps)
 
             # to boost the reward for trapezoid
-            '''if shape_id == 5 and reward > 0:
-                reward *= 1.5'''
+            if shape_id == 5 and reward > 0:
+                reward *= 2
 
             if isinstance(obs, torch.Tensor):
                 obs = obs.numpy()  # Convert PyTorch tensor to NumPy array

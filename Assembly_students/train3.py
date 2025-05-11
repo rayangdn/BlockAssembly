@@ -27,8 +27,12 @@ def make_env(rank: int):
         # build Task from config
         task_conf = config['task']
         task_fn = getattr(tasks, task_conf['type'])
-        task_args = {k: v for k, v in task_conf.items() if k != 'type'}
-        task = task_fn(**task_args)
+        # Only pass arguments if the task function accepts them
+        if task_conf['type'] == 'DoubleBridgeStackedTest':
+            task = task_fn()
+        else:
+            task_args = {k: v for k, v in task_conf.items() if k != 'type'}
+            task = task_fn(**task_args)
         # init environment with configured params
         env = AssemblyGymEnv(task=task, **env_cfg)
         env.seed(seed + rank)
@@ -91,7 +95,7 @@ def main():
 
     # 6) Train
     model.learn(
-        total_timesteps=config.get('total_timesteps', 200_000),
+        total_timesteps=config['ppo'].get('total_timesteps', 200_000),
         callback=[checkpoint_cb, eval_cb, cause_cb]
     )
 

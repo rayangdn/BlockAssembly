@@ -16,7 +16,6 @@ __pycache__/
 
 # Environment and config files
 *.env
-*.yaml
 *.yml
 
 # Jupyter and notebook checkpoints

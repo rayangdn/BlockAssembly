@@ -1,0 +1,65 @@
+# Configuration YAML for AssemblyGymEnv training
+
+env:
+  # Environment parameters
+  max_blocks: 30               # Maximum number of blocks per episode
+  xlim: [-5, 5]                # X-axis limits for rendering and reward map
+  zlim: [0, 10]                # Z-axis limits for rendering and reward map
+  img_size: [64, 64]           # Height, Width of state feature maps
+  mu: 0.8                      # Friction coefficient (unused)
+  density: 1.0                 # Block material density (unused)
+  valid_shapes: [1, 5]         # IDs of block shapes allowed
+  n_offsets: 10                # Discrete offset divisions per face
+  limit_steps: 400             # Episode length limit (truncation)
+  n_floor: 4                   # Number of initial floor blocks
+  target_reward_per_block: 5 # Reward per target reached beyond threshold
+  min_block_reach_target: 4   # Blocks placed before target rewards start
+  collision_penalty: 2      # Penalty added on collision invalid action
+  unstable_penalty: 1       # Penalty added on unstable invalid action
+  not_reached_penalty: 30   # Penalty for not reaching a goal at episode end
+
+env_wrappers:
+  n_envs: 8                    # Number of parallel training environments
+  eval_envs: 1                 # Number of evaluation environments
+  seed: 42                     # Random seed base
+
+ppo:
+  # Stable-Baselines3 PPO hyperparameters
+  policy: CnnPolicy
+  learning_rate: 1e-4
+  n_steps: 128
+  batch_size: 128
+  n_epochs: 10
+  clip_range: 0.2
+  gamma: 0.99
+  ent_coef: 0.01
+  target_kl: 0.05
+  policy_kwargs:
+    normalize_images: false
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+  device: auto                # Auto-select GPU/CPU
+  total_timesteps: 1_000_000    # Total training time steps
+
+evaluation:
+  eval_freq: 500             # eval_freq = total_timesteps / (n_envs * something)
+  deterministic: true
+  render: false
+  log_path: "logs/eval_results"
+  best_model_save_path: "logs/best_model"
+
+checkpoint:
+  save_freq: 1000
+  save_path: "logs/checkpoints"
+  name_prefix: "ppo_block"
+
+goals:
+  # Gaussian reward feature smoothing
+  sigma_x: 1.0
+  sigma_y: 1.0
+
+task:
+  type: DoubleBridgeStackedTest        # Task constructor from tasks.py
+  num_stories: 1      # number of stories for Bridge task
+  width: 2            # width of the bridge (optional)
