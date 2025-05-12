@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 import random
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
-from assembly_env import AssemblyEnv, Action
 from tasks import Bridge
+from assembly_env import AssemblyEnv, Action
 from rendering import plot_assembly_env
 from blocks import Floor
 
@@ -71,6 +71,7 @@ class AssemblyGymEnv(gym.Env):
                 # If action not found in mapping, skip it
                 print(f"Warning: Action {action} not found in mapping, skipping.")
                 continue
+                
         return action_mask
     
     def get_action_mask(self):
@@ -159,41 +160,51 @@ class AssemblyGymEnv(gym.Env):
         # Update available actions and generate action mask
         self.available_actions = self._update_available_actions()
         self.current_action_mask = self._generate_action_mask(self.available_actions)
+        
         # Return observation dictionary
         return self.env.state_feature.numpy(), {}
         
     def step(self, action_idx):
-        # Check if the action is valid using the mask
+        # Initialize info dict with common fields
+        info = {
+            'targets_reached': f"{0}/{len(self.env.task.targets)}",
+            'blocks_placed': 0,  # Subtract 1 for the floor
+            'is_invalid_action': False,
+            'is_invalid_mapping': False,
+            'is_failed_placement': False,
+        }
+        
+        # Check for invalid action
         if self.current_action_mask[action_idx] == 0.0:
-            valid_actions = np.where(self.current_action_mask == 1.0)[0]
-            if len(valid_actions) > 0:
-                # Choose a random valid action
-                action_idx = np.random.choice(valid_actions)
-            else:
-                # No valid actions available, return current state with negative reward
-                return self.env.state_feature.numpy(), 0.0, False, True, {'termination_reason': 'no_valid_actions'}
-  
-        # Convert action index to Action object
+            info['is_invalid_action'] = True
+            return self.env.state_feature.numpy(), -1.0, False, False, info
+        
+        # Try to convert action index to Action object
         try:
             action = self.idx_to_action(action_idx)
         except ValueError as e:
-            print(f"Error converting action index to Action: {e}")
-            return self.env.state_feature.numpy(), 0.0, False, True, {'termination_reason': 'no_mapping_idx_action'}
-
-        state, reward, done = self.env.step(action)
-        if state is None:
-            return self.env.state_feature.numpy(), 0.0, done, False, {'termination_reason': 'failed_placement'}
+            info['is_invalid_mapping'] = True
+            return self.env.state_feature.numpy(), -0.2, False, False, info
         
+        # Execute the action
+        state, reward, done = self.env.step(action)
+        
+        info['blocks_placed'] = len(self.env.block_list) - 1  # Subtract 1 for the floor
+        info['targets_reached'] = f"{self.env.num_targets_reached}/{len(self.env.task.targets)}"
+        
+        # Handle failed placement
+        if state is None:
+            info['is_failed_placement'] = True
+            return self.env.state_feature.numpy(), -0.5, done, False, info
+        
+        # Update available actions if not done
         if not done:
-            # Update available actions and action mask
             self.available_actions = self._update_available_actions()
             self.current_action_mask = self._generate_action_mask(self.available_actions)
         
-        # Return the results
-        return state.numpy(), reward.item(), done, False, {
-            'targets_reached': f"{self.env.num_targets_reached}/{len(self.env.task.targets)}",
-            'blocks_placed': len(self.env.block_list) - 1,  # Subtract 1 for the floor
-        }
+        # Return results
+        #self.env.state_feature = state
+        return state.numpy(), reward.item(), done, False, info
         
     def render(self, mode='human'):
         if mode == 'human':
@@ -207,4 +218,75 @@ class AssemblyGymEnv(gym.Env):
     
     def close(self):
         plt.close('all')
+        
+    def random_action(self, non_colliding=False, stable=False):
+        available_actions = self._update_available_actions()
+        
+        if not available_actions:
+            return None
+        
+        # Shuffle to randomize selection
+        random.shuffle(available_actions)
+        
+        # If we don't need any filtering, just return the first action
+        if not stable and not non_colliding and available_actions:
+            action = available_actions[0]
+            return self.action_to_idx(action)
+        
+            # Otherwise, filter actions based on criteria
+        for action in available_actions:
+            # Check for collision if requested
+            if non_colliding:
+                new_block = self.env.create_block(action)
+                if self.env.collision(new_block):
+                    continue
+            
+            # If we don't need stability check, return this action
+            if not stable:
+                return self.action_to_idx(action)
+            
+            # Check for stability if requested
+            new_block = self.env.create_block(action)
+            self.env.add_block(new_block)
+            is_stable = self.env.is_stable()
+            # Remove the block regardless of stability outcome
+            self.env.delete_block(list(self.env.nodes())[-1])
+            
+            if is_stable:
+                return self.action_to_idx(action)
+        
+        # No valid action found
+        return None
     
+# def main():
+#     task = Bridge(num_stories=2)
+#     wrapped_env = AssemblyGymEnv(task, max_blocks=5)
+    
+#     done = False
+#     rewards = 0
+#     while not done:
+#         # Pick a random action
+#         action_idx = wrapped_env.random_action(non_colliding=True, stable=True)
+#         if action_idx is None:
+#             break
+#         obs, r, done, truncated, info = wrapped_env.step(action_idx)
+#         print(info)
+
+#         if done or truncated:
+#             break
+
+#         rewards += r
+#     wrapped_env.render(mode='human')
+#     #obs, _ = wrapped_env.reset()
+    
+    
+#     # plt.figure(figsize=(8, 6))
+#     # plt.imshow(obs_img, cmap='viridis', origin='upper')
+#     # plt.colorbar(label='Feature Value')
+#     # plt.title('Initial State Feature Map')
+#     # plt.xlabel('X-axis')
+#     # plt.ylabel('Z-axis')
+#     # plt.show()
+     
+# if __name__ == "__main__":
+#     main()
