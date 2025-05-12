@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import random
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
+from tasks import Bridge
 from assembly_env import AssemblyEnv, Action
 from rendering import plot_assembly_env
 from blocks import Floor
@@ -72,7 +73,10 @@ class AssemblyGymEnv(gym.Env):
                 continue
                 
         return action_mask
-  
+    
+    def get_action_mask(self):
+        return self.current_action_mask
+    
     def idx_to_action(self, action_idx):
         if action_idx >= len(self.all_actions):
             raise ValueError(f"Action index {action_idx} out of range")
@@ -161,37 +165,46 @@ class AssemblyGymEnv(gym.Env):
         return self.env.state_feature.numpy(), {}
         
     def step(self, action_idx):
-        # Check if the action is valid using the mask
+        # Initialize info dict with common fields
+        info = {
+            'targets_reached': f"{0}/{len(self.env.task.targets)}",
+            'blocks_placed': 0,  # Subtract 1 for the floor
+            'is_invalid_action': False,
+            'is_invalid_mapping': False,
+            'is_failed_placement': False,
+        }
+        
+        # Check for invalid action
         if self.current_action_mask[action_idx] == 0.0:
-            valid_actions = np.where(self.current_action_mask == 1.0)[0]
-            if len(valid_actions) > 0:
-                # Choose a random valid action
-                action_idx = np.random.choice(valid_actions)
-            else:
-                # No valid actions available, return current state with negative reward
-                return self.env.state_feature.numpy(), 0.0, False, True, {'termination_reason': 'no_valid_actions'}
-  
-        # Convert action index to Action object
+            info['is_invalid_action'] = True
+            return self.env.state_feature.numpy(), -1.0, False, False, info
+        
+        # Try to convert action index to Action object
         try:
             action = self.idx_to_action(action_idx)
         except ValueError as e:
-            print(f"Error converting action index to Action: {e}")
-            return self.env.state_feature.numpy(), 0.0, False, False, {'termination_reason': 'no_mapping_idx_action'}
-
-        state, reward, done = self.env.step(action)
-        if state is None:
-            return self.env.state_feature.numpy(), 0.0, done, False,{'termination_reason': 'failed_placement'}
+            info['is_invalid_mapping'] = True
+            return self.env.state_feature.numpy(), -0.2, False, False, info
         
+        # Execute the action
+        state, reward, done = self.env.step(action)
+        
+        info['blocks_placed'] = len(self.env.block_list) - 1  # Subtract 1 for the floor
+        info['targets_reached'] = f"{self.env.num_targets_reached}/{len(self.env.task.targets)}"
+        
+        # Handle failed placement
+        if state is None:
+            info['is_failed_placement'] = True
+            return self.env.state_feature.numpy(), -0.5, done, False, info
+        
+        # Update available actions if not done
         if not done:
-            # Update available actions and action mask
             self.available_actions = self._update_available_actions()
             self.current_action_mask = self._generate_action_mask(self.available_actions)
         
-        # Return the results
-        return state.numpy(), reward.item(), done, False,{
-            'targets_reached': f"{self.env.num_targets_reached}/{len(self.env.task.targets)}",
-            'blocks_placed': len(self.env.block_list) - 1,  # Subtract 1 for the floor
-        }
+        # Return results
+        #self.env.state_feature = state
+        return state.numpy(), reward.item(), done, False, info
         
     def render(self, mode='human'):
         if mode == 'human':
