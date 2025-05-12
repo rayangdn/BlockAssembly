@@ -3,12 +3,13 @@ import tempfile
 
 import compas
 import numpy as np
-from assembly_rl.environment.geometry import merge_coplanar_faces
 from compas.datastructures import Mesh
 from compas.geometry import Frame, Scale, Translation
 from compas_assembly.datastructures import Block as CRA_Block
 from shapely.geometry import Point as ShapleyPoint
 from shapely.geometry import Polygon as SPolygon
+
+from geometry import merge_coplanar_faces
 
 
 def attr_property(attr_name, default=None):

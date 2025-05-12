@@ -11,8 +11,8 @@ from stable_baselines3.common.vec_env import (
 )
 from wandb.integration.sb3 import WandbCallback
 
-from assembly_rl.environment.tasks import Bridge
-from assembly_rl.gym_env import AssemblyGymWrapper
+from gym_env import AssemblyGymWrapper
+from tasks import Bridge
 
 
 def lr_schedule(progress_remaining: float) -> float:

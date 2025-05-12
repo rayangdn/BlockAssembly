@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from gymnasium import spaces
 
-from assembly_rl.environment.assembly_env import Action, AssemblyEnv
-from assembly_rl.environment.rendering import plot_assembly_env
+from assembly_env import Action, AssemblyEnv
+from rendering import plot_assembly_env
 
 
 class AssemblyGymWrapper(gym.Env):
