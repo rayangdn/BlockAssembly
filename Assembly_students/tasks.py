@@ -3,7 +3,7 @@ from enum import Enum
 
 import numpy as np
 
-from assembly_rl.environment.blocks import Cube, Floor, Trapezoid
+from blocks import Cube, Floor, Trapezoid
 
 # @dataclass
 # class Target:

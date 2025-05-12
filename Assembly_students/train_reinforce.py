@@ -52,7 +52,7 @@ class MaskedPolicy(nn.Module):
         action = dist.sample()
         return action.item(), dist.log_prob(action)
 
-def reinforce_with_mask(env, policy, optimizer, gamma=1.0, n_episodes=1000, max_t=1000, print_every=50):
+def reinforce_with_mask(env, policy, optimizer, gamma=1.0, n_episodes=1000, max_t=20, print_every=50):
     scores = []
     scores_deque = deque(maxlen=100)
     writer = SummaryWriter(log_dir="log/")  # tensorboard writer
@@ -116,6 +116,20 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     policy = MaskedPolicy(obs_shape, action_size).to(device)
-    optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(policy.parameters(), lr=1e-4)
 
     reinforce_with_mask(env, policy, optimizer)
+
+        #     "algo": "MaskablePPO",
+        # "n_steps": 1024,
+        # "batch_size": 256,
+        # "n_epochs": 4,
+        # "lr": 1e-4,
+        # "ent_coef": 1e-3,
+        # "clip_range": 0.1,
+        # "total_timesteps": 1_000_000,
+        # "num_envs": 1,
+        # "gamma": 0.99,
+        # "gae_lambda": 0.95,
+        # "clip_range": 0.1,
+        # "ent_coef": 1e-3,

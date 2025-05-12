@@ -3,7 +3,7 @@ import tempfile
 
 import compas
 import numpy as np
-from assembly_rl.environment.geometry import merge_coplanar_faces
+from geometry import merge_coplanar_faces
 from compas.datastructures import Mesh
 from compas.geometry import Frame, Scale, Translation
 from compas_assembly.datastructures import Block as CRA_Block

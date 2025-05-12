@@ -4,8 +4,8 @@ from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.evaluation import evaluate_policy
 
-from assembly_rl.environment.tasks import Bridge
-from assembly_rl.gym_env import AssemblyGymWrapper
+from tasks import Bridge
+from gym_env import AssemblyGymWrapper
 
 
 def mask_fn(env: gym.Env) -> np.ndarray:

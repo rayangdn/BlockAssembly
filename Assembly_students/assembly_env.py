@@ -10,11 +10,10 @@ from compas_cra.datastructures import CRA_Assembly
 from shapely.geometry import Point as _Pt
 from shapely.geometry import Polygon as _Poly
 
-from assembly_rl.environment.blocks import Floor, block_from_id
-from assembly_rl.environment.geometry import align_blocks
-from assembly_rl.environment.rendering import (render_block_2d,
-                                               render_block_face_2d)
-from assembly_rl.environment.stability import is_stable_rbe
+from blocks import Floor, block_from_id
+from geometry import align_blocks
+from rendering import (render_block_2d,render_block_face_2d)
+from stability import is_stable_rbe
 
 
 @dataclass
