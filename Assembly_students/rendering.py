@@ -3,12 +3,34 @@ import numpy as np
 import torch
 
 
-
-def plot_block(block, ax, facecolor='tab:blue', label=None, face_numbers=False, face_numbers_offset=0.05, face_numbers_color='k', face_numbers_fontsize=12):
-    vertices = np.array([[block.vertex_coordinates(v)[0], block.vertex_coordinates(v)[2]] for v in block.vertices_2d()])
-    ax.fill(vertices[:, 0], vertices[:, 1], '+', edgecolor='k', facecolor=facecolor)
+def plot_block(
+    block,
+    ax,
+    facecolor="tab:blue",
+    label=None,
+    face_numbers=False,
+    face_numbers_offset=0.05,
+    face_numbers_color="k",
+    face_numbers_fontsize=12,
+):
+    vertices = np.array(
+        [
+            [block.vertex_coordinates(v)[0], block.vertex_coordinates(v)[2]]
+            for v in block.vertices_2d()
+        ]
+    )
+    ax.fill(
+        vertices[:, 0], vertices[:, 1], "+", edgecolor="k", facecolor=facecolor
+    )
     if label is not None:
-        ax.text(block.centroid()[0], block.centroid()[2], label, ha="center", va="center", color="w")
+        ax.text(
+            block.centroid()[0],
+            block.centroid()[2],
+            label,
+            ha="center",
+            va="center",
+            color="w",
+        )
 
     if face_numbers:
         for f in block.faces_2d():
@@ -16,21 +38,42 @@ def plot_block(block, ax, facecolor='tab:blue', label=None, face_numbers=False, 
             face_normal = block.face_normal(f)
 
             # plot face number slightly offset from the center
-            ax.text(face_center[0] + face_numbers_offset * face_normal[0], face_center[2] + face_numbers_offset * face_normal[2], f, fontsize=face_numbers_fontsize, color=face_numbers_color, ha='center', va='center')
+            ax.text(
+                face_center[0] + face_numbers_offset * face_normal[0],
+                face_center[2] + face_numbers_offset * face_normal[2],
+                f,
+                fontsize=face_numbers_fontsize,
+                color=face_numbers_color,
+                ha="center",
+                va="center",
+            )
 
 
 def plot_task(task, fig, ax):
     if task.obstacles is not None:
         for obstacle in task.obstacles:
-            plot_block(obstacle, ax, facecolor='tab:red')
-        
+            plot_block(obstacle, ax, facecolor="tab:red")
+
     # for target in task.targets:
-        # ax.scatter(target.location[0], target.location[-1], marker="*", s=100, color="tab:red" if target.fixed else "tab:green")
+    # ax.scatter(target.location[0], target.location[-1], marker="*", s=100, color="tab:red" if target.fixed else "tab:green")
     for location in task.targets:
-        ax.scatter(location[0], location[-1], marker="*", s=100, color="tab:green")
+        ax.scatter(
+            location[0], location[-1], marker="*", s=100, color="tab:green"
+        )
 
 
-def plot_assembly_env(assembly, fig=None, ax=None, plot_forces=False, force_scale=1.0, plot_edges=False, equal=False, face_numbers=False, nodes=False, task=None):
+def plot_assembly_env(
+    assembly,
+    fig=None,
+    ax=None,
+    plot_forces=False,
+    force_scale=1.0,
+    plot_edges=False,
+    equal=False,
+    face_numbers=False,
+    nodes=False,
+    task=None,
+):
     """
     Plot the CRA assembly in 2D with forces.
     """
@@ -46,18 +89,27 @@ def plot_assembly_env(assembly, fig=None, ax=None, plot_forces=False, force_scal
     # if graph is None:
     graph = assembly.graph
     if fig is None:
-        fig, ax = plt.subplots(figsize=(5,5) if equal else None)
+        fig, ax = plt.subplots(figsize=(5, 5) if equal else None)
 
     # plot blocks
     for j, (i, node) in enumerate(graph.node.items()):
-        block = node['block']
-        facecolor = 'tab:blue'
+        block = node["block"]
+        facecolor = "tab:blue"
         if i == -1:
-            facecolor = 'gray'
-        elif node.get('is_support'):
-            facecolor = 'tab:orange'
-        
-        plot_block(block, ax, facecolor=facecolor, label=str(j), face_numbers=face_numbers, face_numbers_offset=-0.15, face_numbers_fontsize=6, face_numbers_color='white')
+            facecolor = "gray"
+        elif node.get("is_support"):
+            facecolor = "tab:orange"
+
+        plot_block(
+            block,
+            ax,
+            facecolor=facecolor,
+            label=str(j),
+            face_numbers=face_numbers,
+            face_numbers_offset=-0.15,
+            face_numbers_fontsize=6,
+            face_numbers_color="white",
+        )
 
         if i == -1:
             for f, attrs in block.faces_2d(data=True):
@@ -71,7 +123,7 @@ def plot_assembly_env(assembly, fig=None, ax=None, plot_forces=False, force_scal
     if nodes:
         for node in graph.nodes():
             point = assembly.node_point(node)
-            ax.plot(point[0], point[2], 'o', color='tab:red')
+            ax.plot(point[0], point[2], "o", color="tab:red")
 
     # plot edges
     if plot_edges:
@@ -79,7 +131,12 @@ def plot_assembly_env(assembly, fig=None, ax=None, plot_forces=False, force_scal
             u, v = edge
             point_u = assembly.node_point(u)
             point_v = assembly.node_point(v)
-            ax.plot([point_u[0], point_v[0]], [point_u[2], point_v[2]], 'k--', linewidth=1)
+            ax.plot(
+                [point_u[0], point_v[0]],
+                [point_u[2], point_v[2]],
+                "k--",
+                linewidth=1,
+            )
 
     # plot interfaces
     for interface in assembly.interfaces():
@@ -87,12 +144,12 @@ def plot_assembly_env(assembly, fig=None, ax=None, plot_forces=False, force_scal
         points = np.array(points)
 
         if len(points) > 0:
-            ax.plot(points[:, 0], points[:, 2], 'k-' ,linewidth=4)
+            ax.plot(points[:, 0], points[:, 2], "k-", linewidth=4)
 
     # plot obstacles
     if task is not None:
         for i, b in enumerate(assembly.task.obstacles):
-            plot_block(b, ax, facecolor='tab:red', label=str(i))
+            plot_block(b, ax, facecolor="tab:red", label=str(i))
 
     # plot forces
     if plot_forces:
@@ -108,17 +165,29 @@ def plot_assembly_env(assembly, fig=None, ax=None, plot_forces=False, force_scal
                     if point[1] < 0:
                         continue
 
-                    ax.plot(point[0], point[2], 'o', color='tab:green')
+                    ax.plot(point[0], point[2], "o", color="tab:green")
 
                     force = interface.forces[i]
 
-                    force_vector = [force['c_u'], force['c_v'], force['c_np'] - force['c_nn']]
+                    force_vector = [
+                        force["c_u"],
+                        force["c_v"],
+                        force["c_np"] - force["c_nn"],
+                    ]
                     # to world coordinates
-                    force_vector = frame.to_world_coordinates(force_vector) - frame.point
-                    ax.arrow(point[0], point[2], -force_scale * force_vector[0], -force_scale * force_vector[2], color='tab:green')
-    
+                    force_vector = (
+                        frame.to_world_coordinates(force_vector) - frame.point
+                    )
+                    ax.arrow(
+                        point[0],
+                        point[2],
+                        -force_scale * force_vector[0],
+                        -force_scale * force_vector[2],
+                        color="tab:green",
+                    )
+
     if equal:
-        ax.axis('equal')
+        ax.axis("equal")
 
     if task is not None:
         plot_task(task, fig, ax)
@@ -130,9 +199,44 @@ def plot_assembly_env(assembly, fig=None, ax=None, plot_forces=False, force_scal
     return fig, ax
 
 
-
-def render_block_2d(block, xlim, zlim, img_size=(512,512), device='cpu', dtype=torch.float):
-    X, Y = np.meshgrid(np.linspace(*xlim, img_size[0]), np.linspace(zlim[1], zlim[0], img_size[1]))
+def render_block_2d(
+    block, xlim, zlim, img_size=(512, 512), device="cpu", dtype=torch.float
+):
+    X, Y = np.meshgrid(
+        np.linspace(*xlim, img_size[0]),
+        np.linspace(zlim[1], zlim[0], img_size[1]),
+    )
     positions = np.vstack([X.ravel(), Y.ravel()]).T
-    return torch.tensor(block.contains_2d_convex(positions).reshape(img_size), device=device).to(dtype)
+    return torch.tensor(
+        block.contains_2d_convex(positions).reshape(img_size), device=device
+    ).to(dtype)
 
+
+def render_block_face_2d(
+    block,
+    face,
+    xlim,
+    zlim,
+    img_size=(64, 64),
+    band=0.02,
+    device="cpu",
+    dtype=torch.float,
+):
+    """
+    Return a mask that is 1 on a thin strip (≈band*scale) around the 2-D face
+    and 0 elsewhere.
+    """
+    # grid in world coordinates
+    X, Y = np.meshgrid(
+        np.linspace(*xlim, img_size[0]),
+        np.linspace(zlim[1], zlim[0], img_size[1]),
+    )
+    P = np.vstack([X.ravel(), Y.ravel()]).T  # (H·W, 2)
+
+    f_frame = block.face_frame_2d(face)
+    offset = np.array([f_frame.point[0], f_frame.point[2]])
+    n = np.array([f_frame.normal[0], f_frame.normal[2]])
+    dist = np.abs(np.dot(P - offset, n))  # signed distance
+    mask = (dist <= band).reshape(img_size)
+
+    return torch.tensor(mask, device=device).to(dtype)

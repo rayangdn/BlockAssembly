@@ -10,10 +10,11 @@ from compas_cra.datastructures import CRA_Assembly
 from shapely.geometry import Point as _Pt
 from shapely.geometry import Polygon as _Poly
 
-from blocks import Floor, block_from_id
-from geometry import align_blocks
-from rendering import render_block_2d
-from stability import is_stable_rbe
+from assembly_rl.environment.blocks import Floor, block_from_id
+from assembly_rl.environment.geometry import align_blocks
+from assembly_rl.environment.rendering import (render_block_2d,
+                                               render_block_face_2d)
+from assembly_rl.environment.stability import is_stable_rbe
 
 
 @dataclass
@@ -77,8 +78,12 @@ class AssemblyEnv(CRA_Assembly):
         self.add_block(Floor(xlim=self.xlim))
 
         self.reward_feature = self.get_reward_features(sigma=0.5)
+        self.obstacle_feature = self.get_obstacle_feature()
+        # self.reward_state = self.get_reward_features(sigma=0)  # static
 
-        self.state_feature = torch.zeros(self.img_size)
+        self.state_feature = torch.zeros((3, *self.img_size))
+        # self.state_feature[2] = self.reward_state
+        # self.state_feature[3] = self.obstacle_feature
 
     # def reset(self, obstacles=None):
     #     self.delete_blocks()
@@ -96,7 +101,9 @@ class AssemblyEnv(CRA_Assembly):
         self.block_list = []  # Blocks(self)
         self.add_block(Floor(xlim=self.xlim))
 
-        self.state_feature = torch.zeros(self.img_size)
+        self.state_feature.zero_()  # wipe dynamic ch.
+        # self.state_feature[2] = self.reward_state
+        # self.state_feature[3] = self.obstacle_feature
 
     def get_reward_features(self, sigma=1):
         reward_features = np.zeros(self.img_size)
@@ -124,6 +131,22 @@ class AssemblyEnv(CRA_Assembly):
         # reward_features -= reward_features.max() / 2
 
         return reward_features
+
+    def get_obstacle_feature(self):
+        """Binary mask of everything the agent must not collide with
+        (floor + ‘obstacles’ defined by the Task)."""
+        feat = torch.zeros(self.img_size)
+        # 3.a  Floor -------------------------------------------------------------
+        floor = self.block_list[0]  # Floor is node 0
+        feat += render_block_2d(
+            floor, xlim=self.xlim, zlim=self.zlim, img_size=self.img_size
+        )
+        # 3.b  Obstacles ---------------------------------------------------------
+        for b in self.task.obstacles:
+            feat += render_block_2d(
+                b, xlim=self.xlim, zlim=self.zlim, img_size=self.img_size
+            )
+        return torch.clamp(feat, 0, 1)  # make it binary
 
     def create_block(self, action: Action):
         block1 = self.block_list[action.target_block]
@@ -176,10 +199,24 @@ class AssemblyEnv(CRA_Assembly):
 
         action_feature = render_block_2d(
             new_block, xlim=self.xlim, zlim=self.zlim, img_size=self.img_size
-        ).unsqueeze(0)
+        )
 
-        self.state_features = torch.minimum(
-            self.state_feature + action_feature, torch.tensor(1.0)
+        block_id_feature = (
+            action_feature * (len(self.block_list)) / self.max_blocks
+        )
+        face_id_feature = (
+            action_feature * (action.face + 1) / 4
+        )  # num_faces = 4
+
+        # 5 accumulate into state (keep max instead of saturating to 1)
+        self.state_feature[0] = torch.clamp(
+            self.state_feature[0] + action_feature, 0, 1
+        )
+        self.state_feature[1] = torch.maximum(
+            self.state_feature[1], block_id_feature
+        )
+        self.state_feature[2] = torch.maximum(
+            self.state_feature[2], face_id_feature
         )
 
         for target in self.task.targets:
@@ -338,11 +375,11 @@ class AssemblyEnv(CRA_Assembly):
         if self.collision(new_block):
             return False
 
-        # support_block = self.block_list[action.target_block]
-        # if self._quick_stability_check(
-        #     support_block, action.target_face, new_block
-        # ):
-        #     return True
+        support_block = self.block_list[action.target_block]
+        if self._quick_stability_check(
+            support_block, action.target_face, new_block
+        ):
+            return True
 
         node = super().add_block(new_block, node=new_block.node)
         self.compute_interfaces()

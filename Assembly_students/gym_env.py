@@ -3,11 +3,10 @@ from itertools import product
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 from gymnasium import spaces
 
-from assembly_env import Action, AssemblyEnv
-from rendering import plot_assembly_env
+from assembly_rl.environment.assembly_env import Action, AssemblyEnv
+from assembly_rl.environment.rendering import plot_assembly_env
 
 
 class AssemblyGymWrapper(gym.Env):
@@ -46,18 +45,20 @@ class AssemblyGymWrapper(gym.Env):
 
         self.observation_space = spaces.Box(
             low=0,
-            high=255,
-            shape=(1, *self.env.state_feature.shape),
-            dtype=np.uint8,
+            high=1.0,
+            shape=self.env.state_feature.shape,
+            dtype=np.float32,
         )
 
     def reset(self, *, seed=None, options=None):
         self.env.reset()
-        obs = (
-            (self.env.state_feature.unsqueeze(0) * 255)
-            .numpy()
-            .astype(np.uint8)
-        )
+        obs = self.env.state_feature.numpy()
+
+        if self._render:
+            plot_assembly_env(self.env, task=self.task)
+            plt.axis("equal")
+            plt.show()
+
         return obs, {}
 
     def _decode_action(self, action_tuple):
@@ -76,25 +77,27 @@ class AssemblyGymWrapper(gym.Env):
 
     def step(self, action):
         action_tuple = self.all_actions[action]
-        act = self._decode_action(action_tuple)
-        if act.target_block >= len(self.env.block_list):
+        if action_tuple[0] >= len(self.env.block_list):
             return (
-                self.env.state_feature.unsqueeze(0).numpy(),
+                self.env.state_feature.numpy(),
                 -1.0,
                 True,
                 False,
                 {},
             )
 
+        act = self._decode_action(action_tuple)
+
+        obs, reward, done = self.env.step(act)
+        if obs is None:
+            obs = self.env.state_feature
+
         if self._render:
             plot_assembly_env(self.env, task=self.task)
             plt.axis("equal")
             plt.show()
 
-        obs, reward, done = self.env.step(act)
-        if obs is None:
-            obs = self.env.state_feature
-        obs = (obs.unsqueeze(0) * 255).numpy().astype(np.uint8)
+        obs = obs.numpy()
 
         return obs, reward.item(), done, False, {}
 

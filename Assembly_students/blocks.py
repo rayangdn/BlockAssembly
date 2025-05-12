@@ -1,14 +1,14 @@
 import os
 import tempfile
-import numpy as np
 
 import compas
+import numpy as np
+from assembly_rl.environment.geometry import merge_coplanar_faces
 from compas.datastructures import Mesh
-from compas.geometry import Frame, Translation, Scale
+from compas.geometry import Frame, Scale, Translation
 from compas_assembly.datastructures import Block as CRA_Block
-
-from shapely.geometry import Polygon as SPolygon, Point as ShapleyPoint
-from geometry import merge_coplanar_faces
+from shapely.geometry import Point as ShapleyPoint
+from shapely.geometry import Polygon as SPolygon
 
 
 def attr_property(attr_name, default=None):
