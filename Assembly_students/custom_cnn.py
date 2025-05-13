@@ -19,16 +19,18 @@ class CustomCNN(nn.Module):
 
         # Policy head: expand–bottleneck [256 → 128 -> ...]
         self.policy_fc1 = nn.Linear(256, 256)
+        self.policy_fc2 = nn.Linear(256, 256)
         # Separate heads for each action component
         tb_dim, tf_dim, si_dim, fa_dim, off_dim = action_dims
-        self.pi_tb  = nn.Linear(256, tb_dim)   # target_block logits
-        self.pi_tf  = nn.Linear(256, tf_dim)   # target_face logits
-        self.pi_si  = nn.Linear(256, si_dim)   # shape_idx logits
-        self.pi_fa  = nn.Linear(256, fa_dim)   # face logits
-        self.pi_off = nn.Linear(256, off_dim)  # offset_idx logits
+        self.pi_tb  = nn.Linear(128, tb_dim)   # target_block logits
+        self.pi_tf  = nn.Linear(128, tf_dim)   # target_face logits
+        self.pi_si  = nn.Linear(128, si_dim)   # shape_idx logits
+        self.pi_fa  = nn.Linear(128, fa_dim)   # face logits
+        self.pi_off = nn.Linear(128, off_dim)  # offset_idx logits
 
         # Value head: [256 → 256 → 1]
-        self.vf_fc1 = nn.Linear(256, 256)
+        self.vf_fc1 = nn.Linear(256, 512)
+        self.vf_fc2 = nn.Linear(512, 256)
         self.fc_vf  = nn.Linear(256, 1)
 
         self.features_dim = 256
@@ -47,6 +49,7 @@ class CustomCNN(nn.Module):
     def policy(self, x):
         x = self.forward(x)
         x = F.relu(self.policy_fc1(x))
+        x = F.relu(self.policy_fc2(x))
         # Compute logits for each discrete action dimension
         logits_tb  = self.pi_tb(x)
         logits_tf  = self.pi_tf(x)
@@ -58,4 +61,5 @@ class CustomCNN(nn.Module):
     def value(self, x):
         x = self.forward(x)
         x = F.relu(self.vf_fc1(x))
+        x = F.relu(self.vf_fc2(x))
         return self.fc_vf(x)

@@ -11,7 +11,7 @@ env:
   min_block_reach_target: 0   # Blocks placed before target rewards start
   collision_penalty: 0     # Penalty added on collision invalid action
   unstable_penalty: 0       # Penalty added on unstable invalid action
-  not_reached_penalty: 5   # Penalty for not reaching a goal at episode end
+  not_reached_penalty: 0   # Penalty for not reaching a goal at episode end
 
 env_wrappers:
   n_envs: 8                    # Number of parallel training environments
