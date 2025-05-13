@@ -45,7 +45,7 @@ if __name__ == "__main__":
         print("VecNormalize stats not loaded:", e)
 
     # Load trained model ; choose between checkpoint and best model
-    model_path = checkpoint_cfg.get("save_path", "logs/checkpoints") + "/ppo_block_200_000_steps.zip"
+    model_path = checkpoint_cfg.get("save_path", "logs/checkpoints") + "/ppo_block_336000_steps.zip"
     #model_path ="/Users/tomstanic/Library/Mobile Documents/com~apple~CloudDocs/Udem/Info/BlockAssembly/Assembly_students/logs/best_model/best_model.zip"
     model = PPO.load(model_path)
 

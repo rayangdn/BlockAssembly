@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class CustomCNN(nn.Module):
-    def __init__(self, observation_space, img_size=(64, 64), action_dims=(4, 4, 2, 4, 7)):
+    def __init__(self, observation_space, img_size=(64, 64), action_dims=(3, 4, 2, 4, 7)):
         super().__init__()
         in_channels = observation_space.shape[0]
         print(f"[CustomCNNMultiHead] in_channels: {in_channels}, img_size: {img_size}, action_dims: {action_dims}")
@@ -21,11 +21,11 @@ class CustomCNN(nn.Module):
         self.policy_fc1 = nn.Linear(256, 256)
         # Separate heads for each action component
         tb_dim, tf_dim, si_dim, fa_dim, off_dim = action_dims
-        self.pi_tb  = nn.Linear(128, tb_dim)   # target_block logits
-        self.pi_tf  = nn.Linear(128, tf_dim)   # target_face logits
-        self.pi_si  = nn.Linear(128, si_dim)   # shape_idx logits
-        self.pi_fa  = nn.Linear(128, fa_dim)   # face logits
-        self.pi_off = nn.Linear(128, off_dim)  # offset_idx logits
+        self.pi_tb  = nn.Linear(256, tb_dim)   # target_block logits
+        self.pi_tf  = nn.Linear(256, tf_dim)   # target_face logits
+        self.pi_si  = nn.Linear(256, si_dim)   # shape_idx logits
+        self.pi_fa  = nn.Linear(256, fa_dim)   # face logits
+        self.pi_off = nn.Linear(256, off_dim)  # offset_idx logits
 
         # Value head: [256 → 256 → 1]
         self.vf_fc1 = nn.Linear(256, 256)

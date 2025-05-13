@@ -4,7 +4,7 @@ env:
   # Environment parameters
   max_blocks: 3            # Maximum number of blocks per episode
   n_offsets: 7               # Discrete offset divisions per face
-  limit_steps: 50  
+  limit_steps: 100  
   end_reward : 15           # Reward for reaching the goal with max_blocks
   n_floor: 0                   # Number of initial floor blocks
   target_reward_per_block: 5 # Reward per target reached beyond threshold
@@ -27,7 +27,7 @@ ppo:
   n_epochs: 10
   clip_range: 0.2
   gamma: 0.99
-  ent_coef: 0.01
+  ent_coef: 0.02
   target_kl: 0.05
   device: auto                # Auto-select GPU/CPU
   total_timesteps: 500_000    # Total training time steps
