@@ -3,7 +3,7 @@ import sys
 import numpy as np
 import torch
 import random
-from stable_baselines3 import DQN
+from stable_baselines3 import PPO  
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback, CallbackList
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
@@ -87,7 +87,7 @@ def main():
     np.random.seed(seed)
     random.seed(seed)
     # Create log directory
-    log_dir = "logs/dqn_no_masking"
+    log_dir = "logs/ppo_no_masking"
     os.makedirs(log_dir, exist_ok=True)
     model_dir = os.path.join(log_dir, "models")
     os.makedirs(model_dir, exist_ok=True)
@@ -107,22 +107,17 @@ def main():
         net_arch=[64, 64],  # Hidden layer sizes
     )
     
-    # Create the DQN agent 
-    model = DQN(
-        "CnnPolicy",  
+    # Create the PPO agent 
+    model = PPO(
+        "CnnPolicy",  # Keep using CnnPolicy for image inputs
         env,
-        learning_rate=1e-4,
-        buffer_size=50000,
-        learning_starts=1000,
-        batch_size=32,
-        tau=1.0,  # Target network update rate
-        gamma=0.99,  # Discount factor
-        train_freq=(4, "step"),  # Update the model every 4 steps
-        gradient_steps=1,  # How many gradient updates per update
-        target_update_interval=1000,  # Target network update frequency
-        exploration_fraction=0.6,  # Fraction of training to reduce epsilon
-        exploration_initial_eps=1.0,  # Initial random action probability
-        exploration_final_eps=0.05,  # Final random action probability
+        learning_rate=3e-4,  # PPO typically uses higher learning rates
+        n_steps=2048,        # Horizon (rollout) length
+        batch_size=64,       # Minibatch size for updates
+        n_epochs=10,         # Number of optimization epochs
+        gamma=0.99,          # Same discount factor
+        gae_lambda=0.95,     # GAE parameter
+        clip_range=0.2,      # PPO clipping parameter
         policy_kwargs=policy_kwargs,
         tensorboard_log=tensorboard_log,
         verbose=1
@@ -132,7 +127,7 @@ def main():
     checkpoint_callback = CheckpointCallback(
         save_freq=10000,  # Save every 10000 timesteps
         save_path=os.path.join(model_dir, "checkpoints"),
-        name_prefix="dqn_no_masking"
+        name_prefix="ppo_no_masking",
     )
 
     # Set up evaluation callback
