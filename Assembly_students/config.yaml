@@ -4,14 +4,14 @@ env:
   # Environment parameters
   max_blocks: 3            # Maximum number of blocks per episode
   n_offsets: 7               # Discrete offset divisions per face
-  limit_steps: 100  
+  limit_steps: 151  
   end_reward : 15           # Reward for reaching the goal with max_blocks
   n_floor: 0                   # Number of initial floor blocks
   target_reward_per_block: 5 # Reward per target reached beyond threshold
   min_block_reach_target: 0   # Blocks placed before target rewards start
   collision_penalty: 0     # Penalty added on collision invalid action
   unstable_penalty: 0       # Penalty added on unstable invalid action
-  not_reached_penalty: 30   # Penalty for not reaching a goal at episode end
+  not_reached_penalty: 5   # Penalty for not reaching a goal at episode end
 
 env_wrappers:
   n_envs: 8                    # Number of parallel training environments

@@ -234,7 +234,10 @@ class AssemblyEnv(CRA_Assembly):
                 print("all targets reached with max_blocks", len(self.block_list)-1)
                 # add a reward if all the targets are reached with the max_blocks number of blocks
                 reward += self.end_reward
-            return self.state_feature, reward, True
+                return self.state_feature, reward, True
+            elif self.num_targets_reached != len(self.task.targets) and len(self.block_list)-1 == self.max_blocks:
+                reward -= self.not_reached_penalty
+                return self.state_feature, reward, True
         return self.state_feature, reward, terminated
 
     def collision(self, new_block):
