@@ -17,13 +17,29 @@ from blocks import Floor
 
 class AssemblyGymEnv(gym.Env):
     """Gym wrapper for the BlockAssembly environment"""
-    def __init__(self, task, overlap=0.2, max_blocks=10):
+    def __init__(self, task, max_blocks=10, xlim=(-5, 5), zlim=(0, 10), 
+                 img_size=(64, 64), mu=0.8, density=1.0, invalid_action_penalty=1.0,
+                 failed_placement_penalty=0.5, truncated_penalty=1.0, max_steps=200):
         super().__init__()
+        
+        self.max_steps = max_steps
         
         # Create the underlying environment
         self.task = task
-        self.env = AssemblyEnv(task, max_blocks=max_blocks)
-        self.overlap = overlap
+        self.env = AssemblyEnv(
+            task=task, 
+            max_blocks=max_blocks,
+            xlim=xlim,
+            zlim=zlim,
+            img_size=img_size,
+            mu=mu,
+            density=density
+        )
+        
+        # Penalty parameters
+        self.failed_placement_penalty = failed_placement_penalty
+        self.invalid_action_penalty = invalid_action_penalty
+        self.truncated_penalty = truncated_penalty
         
         # Define action space parameters
         self.max_blocks = max_blocks
@@ -49,35 +65,30 @@ class AssemblyGymEnv(gym.Env):
         self.action_space = spaces.Discrete(self.total_actions)
         self.observation_space = spaces.Box(
             low=0, high=1, 
-            shape=self.env.img_size, 
+            shape=img_size, 
             dtype=np.float32
         )
         
-        # Initialize environment 
-        self.available_actions = self._update_available_actions()
-        self.current_action_mask = self._generate_action_mask(self.available_actions)
-    
-    def _update_available_actions(self):
-        return self.env.available_actions(num_block_offsets=self.num_offsets)
-    
-    def _generate_action_mask(self, available_actions):
-        action_mask = np.zeros(self.total_actions, dtype=np.float32)
+        self.reset()
+        
+    def _generate_action_mask(self,):
+        
+        available_actions = self.env.available_actions(num_block_offsets=self.num_offsets)
+        self.action_mask = np.zeros(self.total_actions, dtype=np.float32)
         
         for action in available_actions:
             try:
                 idx = self.action_to_idx(action)
-                action_mask[idx] = 1.0
+                self.action_mask[idx] = 1.0
             except ValueError:
                 # If action not found in mapping, skip it
                 print(f"Warning: Action {action} not found in mapping, skipping.")
                 continue
-                
-        return action_mask
     
     def get_action_mask(self):
-        return self.current_action_mask
+        return self.action_mask
     
-    def idx_to_action(self, action_idx):
+    def idx_to_action(self, action_idx, overlap=0.2):
         if action_idx >= len(self.all_actions):
             raise ValueError(f"Action index {action_idx} out of range")
         
@@ -102,21 +113,20 @@ class AssemblyGymEnv(gym.Env):
             l1 = target_block.face_length_2d(target_face) 
             l2 = shape.face_length_2d(face)
                 
-            max_range = (1 - self.overlap) * (l1 + l2) / 2
+            max_range = (1 - overlap) * (l1 + l2) / 2
             offsets = np.linspace(-max_range, max_range, self.num_offsets+2, endpoint=True)[1:-1]
             offset_x = offsets[offset_idx]
     
         return Action(target_block_idx, target_face, shape_idx, face, offset_x)
     
     
-    def action_to_idx(self, action):
+    def action_to_idx(self, action, overlap=0.2):
         target_block_idx = action.target_block
         target_face = action.target_face
         shape_idx = action.shape
         face = action.face
         offset_idx = 2 # Default offset index in the middle of the range
         
-        # Calculate offset_frac_idx
         target_block = self.env.block_list[target_block_idx]
         shape = self.shape_mapping[shape_idx]
         
@@ -127,67 +137,55 @@ class AssemblyGymEnv(gym.Env):
             # For regular blocks, calculate the offset index
             l1 = target_block.face_length_2d(target_face)
             l2 = shape.face_length_2d(face)
-            max_range = (1 - self.overlap) * (l1 + l2) / 2
+            max_range = (1 - overlap) * (l1 + l2) / 2
             offsets = np.linspace(-max_range, max_range, self.num_offsets+2, endpoint=True)[1:-1]
             offset_idx = np.where(np.isclose(offsets, action.offset_x))[0][0]
             
         # Create the action tuple and find its index in all_actions
         action_tuple = (target_block_idx, target_face, shape_idx, face, offset_idx)
-        # Find the index of this action in the all_actions list
         try:
             action_idx = self.all_actions.index(action_tuple)
         except ValueError:
-            # If not found, use the closest action
-            closest_action_idx = 0
-            min_distance = float('inf')
-            for idx, act_tuple in enumerate(self.all_actions):
-                # Calculate a distance metric between action_tuple and act_tuple
-                distance = sum(abs(a - b) for a, b in zip(action_tuple, act_tuple))
-                if distance < min_distance:
-                    min_distance = distance
-                    closest_action_idx = idx
-            action_idx = closest_action_idx
-            print(f"Warning: Action not found in all_actions, using closest action index: {action_idx}")
+            print(f"Error: Action with idx {action_idx} not found in all_actions")
             
         return action_idx         
-       
+    
     def reset(self, seed=None, options=None):
+        self.seed(seed)
         self.env.reset()
         self.env.add_block(Floor(xlim=self.env.xlim)) 
         self.env.num_targets_reached = 0
         self.env.state_feature = torch.zeros(self.env.img_size)
-        
-        # Update available actions and generate action mask
-        self.available_actions = self._update_available_actions()
-        self.current_action_mask = self._generate_action_mask(self.available_actions)
+        self.steps = 0
+        self._generate_action_mask()
         
         # Return observation dictionary
         return self.env.state_feature.numpy(), {}
         
     def step(self, action_idx):
-        # Initialize info dict with common fields
+        
+        self.steps += 1
+        step_reward = 0.0
+        
+        # Initialize info dict
         info = {
             'targets_reached': f"{0}/{len(self.env.task.targets)}",
             'blocks_placed': 0,  # Subtract 1 for the floor
             'is_invalid_action': False,
-            'is_invalid_mapping': False,
             'is_failed_placement': False,
         }
         
         # Check for invalid action
-        if self.current_action_mask[action_idx] == 0.0:
+        if self.action_mask[action_idx] == 0.0:
             info['is_invalid_action'] = True
-            return self.env.state_feature.numpy(), -1.0, False, False, info
-        
-        # Try to convert action index to Action object
-        try:
-            action = self.idx_to_action(action_idx)
-        except ValueError as e:
-            info['is_invalid_mapping'] = True
-            return self.env.state_feature.numpy(), -0.2, False, False, info
+            step_reward -= self.invalid_action_penalty
+            state = self.env.state_feature
+            
+        action = self.idx_to_action(action_idx)
         
         # Execute the action
         state, reward, done = self.env.step(action)
+        step_reward += reward.item()
         
         info['blocks_placed'] = len(self.env.block_list) - 1  # Subtract 1 for the floor
         info['targets_reached'] = f"{self.env.num_targets_reached}/{len(self.env.task.targets)}"
@@ -195,17 +193,26 @@ class AssemblyGymEnv(gym.Env):
         # Handle failed placement
         if state is None:
             info['is_failed_placement'] = True
-            return self.env.state_feature.numpy(), -0.5, done, False, info
-        
-        # Update available actions if not done
+            step_reward -= self.failed_placement_penalty
+            state = self.env.state_feature
+            
         if not done:
-            self.available_actions = self._update_available_actions()
-            self.current_action_mask = self._generate_action_mask(self.available_actions)
-        
-        # Return results
-        #self.env.state_feature = state
-        return state.numpy(), reward.item(), done, False, info
-        
+            # Update the action mask
+            self._generate_action_mask()
+            
+        truncated = (self.steps >= self.max_steps)
+        if truncated:
+            step_reward -= self.truncated_penalty
+            
+        return state.numpy(), step_reward, done, truncated, info
+
+    def seed(self, seed=None):
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+        return [seed]
+    
     def render(self, mode='human'):
         if mode == 'human':
             fig, ax = plt.subplots(figsize=(10, 10))
@@ -219,74 +226,29 @@ class AssemblyGymEnv(gym.Env):
     def close(self):
         plt.close('all')
         
-    def random_action(self, non_colliding=False, stable=False):
-        available_actions = self._update_available_actions()
-        
-        if not available_actions:
-            return None
-        
-        # Shuffle to randomize selection
-        random.shuffle(available_actions)
-        
-        # If we don't need any filtering, just return the first action
-        if not stable and not non_colliding and available_actions:
-            action = available_actions[0]
-            return self.action_to_idx(action)
-        
-            # Otherwise, filter actions based on criteria
-        for action in available_actions:
-            # Check for collision if requested
-            if non_colliding:
-                new_block = self.env.create_block(action)
-                if self.env.collision(new_block):
-                    continue
-            
-            # If we don't need stability check, return this action
-            if not stable:
-                return self.action_to_idx(action)
-            
-            # Check for stability if requested
-            new_block = self.env.create_block(action)
-            self.env.add_block(new_block)
-            is_stable = self.env.is_stable()
-            # Remove the block regardless of stability outcome
-            self.env.delete_block(list(self.env.nodes())[-1])
-            
-            if is_stable:
-                return self.action_to_idx(action)
-        
-        # No valid action found
-        return None
     
-# def main():
-#     task = Bridge(num_stories=2)
-#     wrapped_env = AssemblyGymEnv(task, max_blocks=5)
+def main():
+    task = Bridge(num_stories=2)
+    wrapped_env = AssemblyGymEnv(task, max_blocks=5)
     
-#     done = False
-#     rewards = 0
-#     while not done:
-#         # Pick a random action
-#         action_idx = wrapped_env.random_action(non_colliding=True, stable=True)
-#         if action_idx is None:
-#             break
-#         obs, r, done, truncated, info = wrapped_env.step(action_idx)
-#         print(info)
+    done = False
+    rewards = 0
+    while not done:
+        
+        # Pick a random action
+        action = wrapped_env.env.random_action(wrapped_env.num_offsets, non_colliding=True, stable=True)
+        action_idx = wrapped_env.action_to_idx(action)
+        if action_idx is None:
+            break
+        obs, r, done, truncated, info = wrapped_env.step(action_idx)
+        print(f"Step: {wrapped_env.steps}, Action: {action}, Reward: {r}, Info: {info}")
 
-#         if done or truncated:
-#             break
+        if done or truncated:
+            break
 
-#         rewards += r
-#     wrapped_env.render(mode='human')
-#     #obs, _ = wrapped_env.reset()
+        rewards += r
     
+    wrapped_env.render(mode='human')
     
-#     # plt.figure(figsize=(8, 6))
-#     # plt.imshow(obs_img, cmap='viridis', origin='upper')
-#     # plt.colorbar(label='Feature Value')
-#     # plt.title('Initial State Feature Map')
-#     # plt.xlabel('X-axis')
-#     # plt.ylabel('Z-axis')
-#     # plt.show()
-     
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
