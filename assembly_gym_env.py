@@ -14,12 +14,11 @@ from assembly_env import AssemblyEnv, Action
 from rendering import plot_assembly_env
 from blocks import Floor
 
-
 class AssemblyGymEnv(gym.Env):
     """Gym wrapper for the BlockAssembly environment"""
     def __init__(self, task, max_blocks=10, xlim=(-5, 5), zlim=(0, 10), 
                  img_size=(64, 64), mu=0.8, density=1.0, invalid_action_penalty=1.0,
-                 failed_placement_penalty=0.5, truncated_penalty=1.0, max_steps=200):
+                 failed_placement_penalty=0.5, truncated_penalty=1.0, max_steps=500):
         super().__init__()
         
         self.max_steps = max_steps
@@ -64,9 +63,9 @@ class AssemblyGymEnv(gym.Env):
         # Define action and observation spaces
         self.action_space = spaces.Discrete(self.total_actions)
         self.observation_space = spaces.Box(
-            low=0, high=1, 
-            shape=img_size, 
-            dtype=np.float32
+            low=0, high=255, 
+            shape=(1, *img_size), 
+            dtype=np.uint8,
         )
         
         self.reset()
@@ -156,30 +155,46 @@ class AssemblyGymEnv(gym.Env):
         self.env.add_block(Floor(xlim=self.env.xlim)) 
         self.env.num_targets_reached = 0
         self.env.state_feature = torch.zeros(self.env.img_size)
+        obs = self.env.state_feature.numpy().reshape(1, *self.env.state_feature.shape).astype(np.uint8)
         self.steps = 0
         self._generate_action_mask()
         
-        # Return observation dictionary
-        return self.env.state_feature.numpy(), {}
-        
-    def step(self, action_idx):
-        
-        self.steps += 1
-        step_reward = 0.0
-        
         # Initialize info dict
-        info = {
+        self.info = {
             'targets_reached': f"{0}/{len(self.env.task.targets)}",
             'blocks_placed': 0,  # Subtract 1 for the floor
             'is_invalid_action': False,
             'is_failed_placement': False,
         }
         
+        # Return observation dictionary
+        return obs, {}
+    
+    def _format_state(self):
+        # Convert the state feature to a numpy array
+        state = self.env.state_feature.numpy() * 255.0
+        state = np.clip(state, 0, 255).astype(np.uint8)
+        
+        # Reshape the state to match the observation space
+        if len(state.shape) == 2:
+            state = state.reshape(1, *state.shape)
+        return state
+    
+    def step(self, action_idx):
+        
+        self.steps += 1
+        step_reward = 0.0
+        
+        truncated = (self.steps >= self.max_steps)
+        if truncated:
+            step_reward -= self.truncated_penalty
+        
         # Check for invalid action
         if self.action_mask[action_idx] == 0.0:
-            info['is_invalid_action'] = True
+            self.info['is_invalid_action'] = True
             step_reward -= self.invalid_action_penalty
-            state = self.env.state_feature
+            state = self._format_state()
+            return state, step_reward, False, truncated, self.info
             
         action = self.idx_to_action(action_idx)
         
@@ -187,24 +202,22 @@ class AssemblyGymEnv(gym.Env):
         state, reward, done = self.env.step(action)
         step_reward += reward.item()
         
-        info['blocks_placed'] = len(self.env.block_list) - 1  # Subtract 1 for the floor
-        info['targets_reached'] = f"{self.env.num_targets_reached}/{len(self.env.task.targets)}"
+        self.info['blocks_placed'] = len(self.env.block_list) - 1  # Subtract 1 for the floor
+        self.info['targets_reached'] = f"{self.env.num_targets_reached}/{len(self.env.task.targets)}"
         
         # Handle failed placement
         if state is None:
-            info['is_failed_placement'] = True
+            self.info['is_failed_placement'] = True
             step_reward -= self.failed_placement_penalty
-            state = self.env.state_feature
+            state = self._format_state()
+            return state, step_reward, False, truncated, self.info
             
         if not done:
             # Update the action mask
             self._generate_action_mask()
             
-        truncated = (self.steps >= self.max_steps)
-        if truncated:
-            step_reward -= self.truncated_penalty
-            
-        return state.numpy(), step_reward, done, truncated, info
+        state = self._format_state()
+        return state, step_reward, done, truncated, self.info
 
     def seed(self, seed=None):
         if seed is not None:
@@ -228,6 +241,8 @@ class AssemblyGymEnv(gym.Env):
         
     
 def main():
+    
+    # Create environment
     task = Bridge(num_stories=2)
     wrapped_env = AssemblyGymEnv(task, max_blocks=5)
     
@@ -239,6 +254,7 @@ def main():
         action = wrapped_env.env.random_action(wrapped_env.num_offsets, non_colliding=True, stable=True)
         action_idx = wrapped_env.action_to_idx(action)
         if action_idx is None:
+            print(f"Invalid action index {action_idx}, skipping...")
             break
         obs, r, done, truncated, info = wrapped_env.step(action_idx)
         print(f"Step: {wrapped_env.steps}, Action: {action}, Reward: {r}, Info: {info}")
