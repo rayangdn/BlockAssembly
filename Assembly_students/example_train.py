@@ -1,108 +1,107 @@
 import matplotlib.pyplot as plt
-from rendering import plot_assembly_env, plot_task
-#from tree import  ExtendedTree, Action
-from tasks import Bridge, Tower, DoubleBridge, PyramideTopsOnly, DoubleBridgeStackedTest
-from assembly_env_copy import AssemblyGymEnv 
-from blocks import Floor # You'll need to import your Task class
+from rendering import plot_assembly_env
+import tasks
+from tasks import DoubleBridgeStackedTest
+from assembly_env_copy import AssemblyGymEnv
 import os
 import yaml
-
-#generate a random action
 import numpy as np
 from gym import spaces
 from collections import namedtuple
 
-# If not already defined:
 Action = namedtuple("Action", ["target_block", "target_face", "shape", "face", "offset_x"])
 
-
-
-def random_action_generator(max_blocks, xlim, valid_shapes, block_list_size):
+def random_action_generator(max_blocks):
     action_space = spaces.Dict({
-        'target_block': spaces.Discrete(block_list_size),  # Use block_list_size instead of max_blocks
+        'target_block': spaces.Discrete(max_blocks),
         'target_face': spaces.Discrete(4),
-        'shape': spaces.Discrete(len(valid_shapes)),
+        'shape': spaces.Discrete(2),
         'face': spaces.Discrete(4),
-        'offset_x': spaces.Discrete(10),
+        'offset_x': spaces.Discrete(5),
     })
-
     sample = action_space.sample()
-    shape_id = valid_shapes[sample['shape']]
-
     return np.array([
-        sample['target_block'],  # Fixed: replaced action_dict with sample
-        sample['target_face'],  # Fixed: replaced action_dict with sample
-        shape_id,               # Use shape_id directly
-        sample['face'],         # Fixed: replaced action_dict with sample
-        sample['offset_x']      # Fixed: replaced action_dict with sample
+        sample['target_block'],
+        sample['target_face'],
+        sample['shape'],
+        sample['face'],
+        sample['offset_x']
     ]).astype(int)
 
-
-task = DoubleBridgeStackedTest()
-# Load not_reached_penalty from config.yaml
-with open("config.yaml", "r") as f:
+# Load config and task/env dynamically
+with open("/Users/tomstanic/Library/Mobile Documents/com~apple~CloudDocs/Udem/Info/BlockAssembly/Assembly_students/config.yaml", "r") as f:
     config = yaml.safe_load(f)
 not_reached_penalty = config["env"].get("not_reached_penalty", 25)
+max_blocks = config["env"].get("max_blocks", 5)
+xlim = config["env"].get("xlim", [-1, 1])
 
-#create instance of AssemblyGymenvironment
-env = AssemblyGymEnv(task=task, not_reached_penalty=not_reached_penalty)
+# Build task from config (dynamic type and params)
+#from tasks import task_fn  # Import task_fn from the appropriate module
 
-valid_figs = []
+task_cfg = config["task"]
+task_type = task_cfg["type"]
+task_fn = getattr(tasks, task_type)
+task_args = task_cfg.get("args", {})
+task = task_fn(**task_args) if task_args else task_fn()
 
-done = False
+# Prepare environment arguments from config
+env_cfg = config.get("env", {})  # Load env_cfg from the configuration file
+env = AssemblyGymEnv(
+    task=task,
+    max_blocks=env_cfg.get("max_blocks", 10),
+    n_offsets=env_cfg.get("n_offsets", 10),
+    limit_steps=env_cfg.get("limit_steps", 2),
+    end_reward=env_cfg.get("end_reward", 100),
+    n_floor=env_cfg.get("n_floor", 0),
+    target_reward_per_block=env_cfg.get("target_reward_per_block", 10),
+    min_block_reach_target=env_cfg.get("min_block_reach_target", 8),
+    collision_penalty=env_cfg.get("collision_penalty", 0),
+    unstable_penalty=env_cfg.get("unstable_penalty", 0),
+    not_reached_penalty=env_cfg.get("not_reached_penalty", 0),
+)
 
-i = 0
-last_reward = -1
 
-    
 
+
+obs, info = env.reset()
 done = False
 truncated = False
 rewards = 0
-obs, info = env.reset()  # Newer gym versions return (obs, info)
+i = 0
 while not (done or truncated):
-    #action = env.random_action()
+    i += 1
     action_array = random_action_generator(
-        max_blocks=5,
-        xlim=[-1, 1],
-        valid_shapes=[0, 1],
-        block_list_size=len(env.env.block_list)
+        max_blocks = env_cfg.get("max_blocks", 10)
     )
-
-    # Pass the Action object to env.env.step
+    print(f"Action: {action_array}")
     obs, reward, done, truncated, info = env.step(action_array)
     rewards += reward
     if done or truncated:
         last_reward = reward
         break
 
-
 print(f"Total reward: {rewards}")
+print(f"steps: {i}")
 
-
-
-assembly_env = env.env
-plot_assembly_env(assembly_env, task=task, face_numbers=True)
-plt.axis('equal')
-
-block_map, face_map = obs  # shape: (64, 64) from (1, 64, 64)
-
-print("Obstacles canal 0:", (block_map == 0.09).sum())
-print("Obstacles canal 1:", (face_map == 0.09).sum())
-print("Valeurs uniques canal 0:", np.unique(block_map))
-print("Valeurs uniques canal 1:", np.unique(face_map))
-plt.figure(figsize=(10,4))
-
-plt.subplot(1,2,1)
-plt.title("Block ID map")
-plt.imshow(block_map, cmap="gist_ncar")
-plt.axis("off")
-
-plt.subplot(1,2,2)
-plt.title("Face ID map")
-plt.imshow(face_map, cmap="tab20")
-plt.axis("off")
-
+# Visualization and state extraction
+state_feature = env.env.state_feature.numpy()
+plt.figure(figsize=(12, 4))
+for idx in range(state_feature.shape[0]):
+    plt.subplot(1, state_feature.shape[0], idx + 1)
+    plt.title(f"Channel {idx}")
+    plt.imshow(state_feature[idx], cmap="viridis", vmin=0.0, vmax=1.0)
+    plt.axis("off")
+plt.suptitle("All state feature channels")
 plt.tight_layout()
 plt.show()
 
+plot_assembly_env(
+    env,
+    fig=None, ax=None,
+    plot_forces=False, force_scale=1.0,
+    plot_edges=False, equal=True,
+    face_numbers=True, nodes=False,
+    task=task
+)
+plt.axis('equal')
+plt.show()
