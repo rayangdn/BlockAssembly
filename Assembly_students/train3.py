@@ -1,4 +1,4 @@
-import os
+import os 
 import torch
 import numpy as np
 import yaml
@@ -84,9 +84,12 @@ def main():
 
     # 5) Model
     ppo_cfg = config['ppo']
-    device = torch.device(ppo_cfg.get('device', 'cpu')) if ppo_cfg['device'] != 'auto' else (
-        torch.device('mps') if torch.backends.mps.is_available() else torch.device('cpu')
-    )
+    if torch.backends.mps.is_available():
+        device = torch.device('mps')
+    elif torch.cuda.is_available():
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
 
     env_param_keys = [
         "max_blocks", "xlim", "zlim", "img_size", "mu", "density", "valid_shapes", "n_offsets", "limit_steps", "n_floor",
@@ -101,21 +104,15 @@ def main():
         dummy_task = task_fn(**task_conf['args'])
     else:
         dummy_task = task_fn()
-    max_blocks = env_params.get('max_blocks', 3)  # Get from env_params/env_cfg!
 
     # Print env_params once for debugging using AssemblyGymEnv's verbose mode
     dummy_env = AssemblyGymEnv(task=dummy_task, **env_params, verbose=True)
     obs_shape = dummy_env.observation_space.shape  # (channels, H, W)
     img_size = tuple(obs_shape[1:])  # (H, W)
-    # Only change num_target_blocks and n_offsets in action_dims
-    num_target_blocks = max_blocks - 1
-    n_offsets = env_params.get('n_offsets', 7)
-    action_dims = (num_target_blocks, 4, 2, 4, n_offsets)
-    # After printing, set verbose=False for all other envs
 
     model = PPO(
-        'CnnPolicy',
-        train_envs,
+        policy="CnnPolicy",  
+        env=train_envs,
         learning_rate=float(ppo_cfg['learning_rate']),
         n_steps=ppo_cfg['n_steps'],
         batch_size=ppo_cfg['batch_size'],
@@ -127,12 +124,10 @@ def main():
         device=device,
         verbose=1,
         tensorboard_log=ppo_cfg.get('tensorboard_log', './ppo_assembly_tensorboard/'),
-        policy_kwargs=dict(
+        policy_kwargs = dict(
             features_extractor_class=CustomCNN,
-            features_extractor_kwargs=dict(
-                img_size=img_size,
-                action_dims=action_dims,
-            )
+            features_extractor_kwargs=dict(img_size=img_size),
+            net_arch=dict(pi=[256, 128], vf=[256, 256])
         )
     )
 

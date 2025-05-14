@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 from rendering import plot_assembly_env
 import tasks
 from tasks import DoubleBridgeStackedTest
-from assembly_env_copy import AssemblyGymEnv
+from assembly_env_copy_2 import AssemblyGymEnv
 import os
 import yaml
 import numpy as np
@@ -29,7 +29,7 @@ def random_action_generator(max_blocks):
     ]).astype(int)
 
 # Load config and task/env dynamically
-with open("/Users/tomstanic/Library/Mobile Documents/com~apple~CloudDocs/Udem/Info/BlockAssembly/Assembly_students/config.yaml", "r") as f:
+with open("config copy 2.yaml", "r") as f:
     config = yaml.safe_load(f)
 not_reached_penalty = config["env"].get("not_reached_penalty", 25)
 max_blocks = config["env"].get("max_blocks", 5)
@@ -73,7 +73,6 @@ while not (done or truncated):
     action_array = random_action_generator(
         max_blocks = env_cfg.get("max_blocks", 10)
     )
-    print(f"Action: {action_array}")
     obs, reward, done, truncated, info = env.step(action_array)
     rewards += reward
     if done or truncated:

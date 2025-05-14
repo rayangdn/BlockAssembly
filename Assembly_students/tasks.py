@@ -207,7 +207,7 @@ def DoubleBridgeStackedTest():
     )
 
 
-def StochasticBridge(num_stories=1, width=1, floor_positions=None, shapes=None, name="StochasticBridge"):
+def StochasticBridge(num_stories=1, width=1, floor_positions=None, shapes=None, name="StochasticBridge", x_pos=None):
     """
     Stochastic bridge: targets and obstacles are stacked at a random x position from -2 to 2.
     """
@@ -216,7 +216,11 @@ def StochasticBridge(num_stories=1, width=1, floor_positions=None, shapes=None, 
     if shapes is None:
         shapes = [Cube(), Trapezoid()]
     H = 0.9
-    x_pos = random.choice([-1.75, -0.825, 0,  0.825, 1.75])
+    if x_pos is None:
+        x_pos = random.choice([-1.75, -0.825, 0.0, 0.825, 1.75])
+    else:
+        x_pos = float(x_pos)
     targets = [(x_pos, 0, num_stories * H + H/2)]
     obstacles = [Cube(location=(x_pos, 0., i*H + H/2), scale=0.5) for i in range(num_stories)]
     return Task(name=name, shapes=shapes, obstacles=obstacles, targets=targets, floor_positions=floor_positions)
+

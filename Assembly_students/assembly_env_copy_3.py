@@ -142,7 +142,7 @@ class AssemblyEnv(CRA_Assembly):
             # Canal objectifs déplacé à -3
             self.state_feature[-3, row, col] = 1.0
 
-    def get_reward_features(self, sigma_x = 1, sigma_y = 1):
+    def get_reward_features(self, sigma_x = 1, sigma_y = 3):
         reward_features = np.zeros(self.img_size)
         if len(self.task.targets) == 0:
             return torch.zeros(self.img_size)
@@ -215,7 +215,6 @@ class AssemblyEnv(CRA_Assembly):
                 self.num_targets_reached += 1
                 
 
-
         reward = torch.sum(action_feature * self.reward_feature, dim=(-1, -2)).flatten()[0] #+ not_reached
         reward = float(reward)
         terminated = (len(self.block_list)-1 >= self.max_blocks) | self.num_targets_reached == len(self.task.targets)
@@ -223,7 +222,7 @@ class AssemblyEnv(CRA_Assembly):
             if self.num_targets_reached == len(self.task.targets) and len(self.block_list)-1 == self.max_blocks:
                 #print("all targets reached with max_blocks", len(self.block_list)-1)
                 # add a reward if all the targets are reached with the max_blocks number of blocks
-                reward += self.end_reward
+                reward += self.end_reward            
         return self.state_feature, reward, terminated
 
     def collision(self, new_block):
@@ -576,7 +575,7 @@ class AssemblyGymEnv(gym.Env):
             info['num_targets_reached'] = self.env.num_targets_reached
         
         self.current_reward += reward
-        #print("good action with", reward, len(self.env.block_list) - 1, self.steps, self.env.num_targets_reached)
+        print("good action with", reward, len(self.env.block_list) - 1, self.steps, self.env.num_targets_reached)
 
         # give -1 to force the agent to get close to the target
         return obs, reward - 1, done, False, info

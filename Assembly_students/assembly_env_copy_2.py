@@ -142,7 +142,7 @@ class AssemblyEnv(CRA_Assembly):
             # Canal objectifs déplacé à -3
             self.state_feature[-3, row, col] = 1.0
 
-    def get_reward_features(self, sigma_x = 1, sigma_y = 1):
+    def get_reward_features(self, sigma_x = 1, sigma_y = 2):
         reward_features = np.zeros(self.img_size)
         if len(self.task.targets) == 0:
             return torch.zeros(self.img_size)
@@ -576,7 +576,7 @@ class AssemblyGymEnv(gym.Env):
             info['num_targets_reached'] = self.env.num_targets_reached
         
         self.current_reward += reward
-        #print("good action with", reward, len(self.env.block_list) - 1, self.steps, self.env.num_targets_reached)
+        print("good action with", reward, len(self.env.block_list) - 1, self.steps, self.env.num_targets_reached)
 
         # give -1 to force the agent to get close to the target
         return obs, reward - 1, done, False, info
