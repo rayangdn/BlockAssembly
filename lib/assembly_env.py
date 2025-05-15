@@ -15,8 +15,6 @@ from rendering import render_block_2d
 
 from stability import is_stable_rbe
 
-
-
 @dataclass
 class Action:
     target_block: int
@@ -30,14 +28,26 @@ class Action:
     def __hash__(self):
         return hash((self.target_block, self.target_face, self.shape, self.face, self.offset_x))
     
-def gaussian(loc, xlim, zlim, img_size=(512,512), sigma=2):
+def gaussian(loc, xlim, zlim, img_size=(512,512), sigma=2, reward_representation='basic'):
     x, y = loc
     X, Y = np.meshgrid(np.linspace(*xlim, img_size[0]), np.linspace(zlim[1], zlim[0], img_size[1]))
-    return np.exp(-((X - x)**2 + (Y - y)**2) / (2*sigma**2)).reshape(img_size)
+    
+    if reward_representation == 'basic':
+        mask = np.ones(img_size) # mask for basic representation
+        
+    elif reward_representation == 'reshaped':
+        mask = (Y <= y) # mask for reshaped representation
+        
+    else:
+        raise ValueError(f"Unknown reward representation: {reward_representation}. Supported values are 'basic' or 'reshaped'.")
+    
+    gauss = np.exp(-((X - x)**2 + (Y - y)**2) / (2*sigma**2)) * mask
+    return gauss.reshape(img_size)
 
 class AssemblyEnv(CRA_Assembly):
 
-    def __init__(self, task, max_blocks=10, xlim=(-5, 5), zlim=(0, 10), img_size=(64, 64), mu=0.8, density=1.0):
+    def __init__(self, task, max_blocks=10, xlim=(-5, 5), zlim=(0, 10), img_size=(64, 64), mu=0.8, density=1.0,
+                 state_representation='basic', reward_representation='basic'):
         super().__init__()
         self.task = task
         self.xlim = xlim
@@ -47,6 +57,10 @@ class AssemblyEnv(CRA_Assembly):
         self.density = density
         self.num_targets_reached = 0
         self.max_blocks = max_blocks
+        self.state_representation = state_representation
+        self.reward_representation = reward_representation
+        
+        
         # self.obstacles = []
         # self.blocks = {}
         #self.blocks = Blocks(self)
@@ -55,8 +69,50 @@ class AssemblyEnv(CRA_Assembly):
         
         self.reward_feature = self.get_reward_features(sigma=0.5)
 
-        self.state_feature = torch.zeros(self.img_size)
+        self.state_feature = self.initialize_state_feature()
 
+    def initialize_state_feature(self):
+        if self.state_representation == 'basic':
+            # Basic representation: only blocks (original implementation)
+            return torch.zeros(self.img_size)
+        
+        elif self.state_representation == 'intensity':
+            # Intensity representation: one channel with different intensities
+            state = torch.zeros(self.img_size)
+            
+            # Add targets as low-value features
+            for target in self.task.targets:
+                # Convert target coordinates to pixel positions
+                x, z = target[0], target[-1]
+                x_idx = int((x - self.xlim[0]) / (self.xlim[1] - self.xlim[0]) * (self.img_size[0] - 1))
+                z_idx = int((self.zlim[1] - z) / (self.zlim[1] - self.zlim[0]) * (self.img_size[1] - 1))
+                
+                # Create a small marker for each target (2x2 pixels)
+                for dx in [-1, -0, 1]:
+                    for dz in [-1, 0, 1]:
+                        tx, tz = x_idx + dx, z_idx + dz
+                        if 0 <= tx < self.img_size[0] and 0 <= tz < self.img_size[1]:
+                            state[tz, tx] = 0.3  # T
+ 
+            # Add obstacles as medium-value features
+            for obstacle in self.task.obstacles:
+                obstacle_img = render_block_2d(
+                    obstacle, 
+                    xlim=self.xlim, 
+                    zlim=self.zlim, 
+                    img_size=self.img_size
+                )
+                state = torch.maximum(state, obstacle_img * 0.6)
+
+            return state
+
+        elif self.state_representation == 'multi_channels':
+            self.state_representation = 'basic'
+            print("Not yet  implemented, switch to 'basic' representation")
+            return torch.zeros(self.img_size)
+            
+        else:
+            raise ValueError(f"Unknown state representation: {self.state_representation}. Supported values are 'basic', 'intensity' or 'multi_channels'.")
 
     def reset(self, obstacles=None):
         self.delete_blocks()
@@ -64,6 +120,9 @@ class AssemblyEnv(CRA_Assembly):
         # self.blocks = {}
         # self._add_support_block()
         self.obstacles = []
+        self.num_targets_reached = 0
+        self.add_block(Floor(xlim=self.xlim))
+        self.state_feature = self.initialize_state_feature()
 
     def get_reward_features(self, sigma=1):
         reward_features = np.zeros(self.img_size)
@@ -77,14 +136,13 @@ class AssemblyEnv(CRA_Assembly):
                 y = (y - self.zlim[0]) / (self.zlim[1] - self.zlim[0])
                 reward_features[round((1-y)*self.img_size[0]), round(x*self.img_size[1])] = 1
             else:
-                reward_features += gaussian((x,y), self.xlim, self.zlim, self.img_size, sigma)
+                reward_features += gaussian((x,y), self.xlim, self.zlim, self.img_size, sigma, self.reward_representation)
 
         reward_features = torch.tensor(reward_features).float()
         
         # reward_features /= reward_features.sum()
         reward_features /= len(self.task.targets)
         # reward_features -= reward_features.max() / 2
-
         return reward_features
     
     def create_block(self, action : Action):
@@ -118,6 +176,20 @@ class AssemblyEnv(CRA_Assembly):
             
         self.compute_interfaces()
 
+    def update_state_with_block(self, block_feature):
+        if self.state_representation == 'basic':
+            # Basic: Add block to state, capping at 1.0
+            self.state_feature = torch.minimum(
+                self.state_feature + block_feature,
+                torch.tensor(1.0)
+            )
+            
+        elif self.state_representation == 'intensity':
+            # Intensity: Use maximum to overlay blocks at full intensity
+            self.state_feature = torch.maximum(
+                self.state_feature,
+                block_feature  # Full intensity (1.0) for blocks
+            )
     def step(self, action : Action):
         # create and add block to environment
         new_block = self.create_block(action)
@@ -136,10 +208,9 @@ class AssemblyEnv(CRA_Assembly):
             zlim=self.zlim, 
             img_size=self.img_size
         ).unsqueeze(0)
-        self.state_feature = torch.minimum(
-                self.state_feature + action_feature, 
-                torch.tensor(1.0)
-            )
+        
+       # Update state feature based on representation
+        self.update_state_with_block(action_feature)
         
         for target in self.task.targets:
             if new_block.contains_2d(target):

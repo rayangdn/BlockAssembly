@@ -17,8 +17,9 @@ from blocks import Floor
 class AssemblyGymEnv(gym.Env):
     """Gym wrapper for the BlockAssembly environment"""
     def __init__(self, task, max_blocks=10, xlim=(-5, 5), zlim=(0, 10), 
-                 img_size=(64, 64), mu=0.8, density=1.0, invalid_action_penalty=0.5,
-                 failed_placement_penalty=0.5, truncated_penalty=1.0, max_steps=500):
+                 img_size=(64, 64), mu=0.8, density=1.0, invalid_action_penalty=1.0,
+                 failed_placement_penalty=0.5, truncated_penalty=1.0, max_steps=200,
+                 state_representation='basic', reward_representation='basic'):
         super().__init__()
         
         self.max_steps = max_steps
@@ -32,7 +33,9 @@ class AssemblyGymEnv(gym.Env):
             zlim=zlim,
             img_size=img_size,
             mu=mu,
-            density=density
+            density=density,
+            state_representation=state_representation,
+            reward_representation=reward_representation,
         )
         
         # Penalty parameters
@@ -65,7 +68,7 @@ class AssemblyGymEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=0, high=255, 
             shape=(1, *img_size), 
-            dtype=np.uint8,
+            dtype=np.float32,
         )
         
         self.reset()
@@ -83,6 +86,9 @@ class AssemblyGymEnv(gym.Env):
                 # If action not found in mapping, skip it
                 print(f"Warning: Action {action} not found in mapping, skipping.")
                 continue
+    
+    def get_action_masks(self):
+        return self.action_mask
     
     def idx_to_action(self, action_idx, overlap=0.2):
         if action_idx >= len(self.all_actions):
@@ -149,10 +155,7 @@ class AssemblyGymEnv(gym.Env):
     def reset(self, seed=None, options=None):
         self.seed(seed)
         self.env.reset()
-        self.env.add_block(Floor(xlim=self.env.xlim)) 
-        self.env.num_targets_reached = 0
-        self.env.state_feature = torch.zeros(self.env.img_size)
-        obs = self.env.state_feature.numpy().reshape(1, *self.env.state_feature.shape).astype(np.uint8)
+        obs = self.env.state_feature.numpy().reshape(1, *self.env.state_feature.shape)
         self.steps = 0
         self._generate_action_mask()
         
@@ -160,9 +163,8 @@ class AssemblyGymEnv(gym.Env):
         return obs, {}
     
     def _format_state(self):
-        
         # Convert the state feature to a numpy array
-        state = self.env.state_feature.numpy() 
+        state = self.env.state_feature.numpy()
         
         # Reshape the state to match the observation space
         if len(state.shape) == 2:
@@ -203,7 +205,6 @@ class AssemblyGymEnv(gym.Env):
             step_reward -= self.failed_placement_penalty
             state = self._format_state()
             return state, step_reward, done, truncated, self.info
-        
         if not done:
             # Update the action mask
             self._generate_action_mask()
@@ -221,9 +222,9 @@ class AssemblyGymEnv(gym.Env):
     def render(self, mode='human'):
         if mode == 'human':
             fig, ax = plt.subplots(figsize=(10, 10))
-            plot_assembly_env(self.env, fig=fig, ax=ax, task=self.env.task, face_numbers=True)
-            plt.axis('equal')
+            plot_assembly_env(self.env, fig=fig, ax=ax, task=self.env.task, equal=True, face_numbers=True)
             plt.show()
+            
             return None
         else:
             raise NotImplementedError(f"Render mode {mode} not implemented")
@@ -236,8 +237,13 @@ def main():
     
     # Create environment
     task = Bridge(num_stories=2)
-    wrapped_env = AssemblyGymEnv(task, max_blocks=3)
-   
+    wrapped_env = AssemblyGymEnv(
+        task=task, 
+        max_blocks=3, 
+        state_representation='intensity', 
+        reward_representation='reshaped'
+    )
+
     done = False
     rewards = 0
     while not done:
@@ -257,10 +263,6 @@ def main():
         rewards += r
     
     wrapped_env.render(mode='human')
-    obs = wrapped_env.env.state_feature.permute(1,2,0).numpy()
-    plt.imshow(obs)
-    plt.show()
-    print(f"Final observation: {obs.shape}")
     
 if __name__ == "__main__":
     main()
