@@ -80,7 +80,9 @@ def make_env(seed=None):
         invalid_action_penalty=1.0,
         failed_placement_penalty=0.0,
         truncated_penalty=1.0,
-        max_steps=200
+        max_steps=200,
+        state_representation='basic', # One of basic, intensity or multi_channel
+        reward_representation='basic' # One of basic or reshaped
     )
     
     if seed is not None:
