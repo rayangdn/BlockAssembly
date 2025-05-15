@@ -1,0 +1,149 @@
+################################
+# Assembly Environment Configuration
+################################
+
+env:
+
+  # Environment Basic Parameters
+  max_blocks: 10
+  xlim: [-5, 5]
+  zlim: [0, 10]
+  img_size: [64, 64]
+  mu: 0.8
+  density: 1.0
+
+  # Penalty and Reward Settings
+  invalid_action_penalty: 1.0
+  failed_placement_penalty: 0.5
+  truncated_penalty: 1.0
+
+  # Episode Configuration
+  max_steps: 200
+
+  # Representation Settings
+  state_representation: "basic"   # Options: "basic", "intensity", "multi_channels"
+  reward_representation: "basic"  # Options: "basic", "reshaped"
+
+  # Action Masking
+  use_action_masking: True  # Set to True to enable action masking for PPO
+
+
+################################
+# Task Configuration
+################################
+task:
+  # Select task type
+  task_type: "Bridge"  # Options: "Empty", "Tower", "Bridge", "DoubleBridge"
+  
+  # Common task parameters
+  floor_positions: [-2, -1, 0, 1, 2]
+  
+  # Empty task config
+  empty:
+    shapes: []
+  
+  # Tower task config
+  tower:
+    targets: [[0, 3], [0, 6]]  # Format: [(position_x, height), ...]
+    obstacles: [[2, 2], [-2, 2]]  # Format: [(position_x, height), ...]
+    shapes: ["Cube"]
+    name: "Tower_2_2"  
+  
+  # Bridge task config
+  bridge:
+    num_stories: 2
+    width: 1
+    shapes: ["Cube", "Trapezoid"]
+    name: "Bridge_2_1"
+  
+  # DoubleBridge task config
+  double_bridge:
+    num_stories: 2
+    with_top: false
+    shapes: ["Cube", "Trapezoid"]
+    name: "DoubleBridge_2_no_top"
+    
+################################
+# RL Agent Configuration
+################################
+
+agent:
+
+  # Common Parameters
+  verbose: 1
+  use_agent: 'ppo'  # Options: "dqn", "ppo", "ppo_masking"
+
+  # Training Parameters
+  total_timesteps: 1000000
+
+  # DQN Parameters
+  dqn:
+    policy: "CnnPolicy"
+    learning_rate: 0.0001           # 1e-4
+    buffer_size: 50000
+    learning_starts: 1000
+    batch_size: 32
+    tau: 1.0                        # Target network update rate
+    gamma: 0.99                     # Discount factor
+    train_freq: 4                   # Update the model every 4 steps
+    gradient_steps: 1               # How many gradient updates per update
+    target_update_interval: 1000    # Target network update frequency
+    exploration_fraction: 0.6       # Fraction of training to reduce epsilon
+    exploration_initial_eps: 1.0    # Initial random action probability
+    exploration_final_eps: 0.05     # Final random action probability
+    policy_kwargs:
+      net_arch: [64, 64]
+      features_extractor_kwargs:
+        features_dim: 64
+      normalize_images: false
+
+  # PPO Parameters
+  ppo:
+    policy: "CnnPolicy"
+    learning_rate: 0.0003         # 3e-4 is the recommended default
+    n_steps: 2048                 # Number of steps to collect per update
+    batch_size: 64                # Minibatch size
+    n_epochs: 10                  # Number of optimization epochs
+    gamma: 0.99                   # Discount factor
+    gae_lambda: 0.95              # Factor for trade-off of bias vs variance
+    clip_range: 0.2               # Cliprange for PPO
+    clip_range_vf: null           # Cliprange for value function (None = no clip)
+    normalize_advantage: true     # Normalize advantage
+    ent_coef: 0.01                # Entropy coefficient
+    vf_coef: 0.5                  # Value function coefficient
+    max_grad_norm: 0.5            # Max gradient norm
+    use_sde: false                # Whether to use generalized State Dependent Exploration
+    sde_sample_freq: -1           # Sample a new noise matrix every n steps
+    target_kl: null               # Target KL divergence threshold
+    policy_kwargs:
+      net_arch:
+        pi: [64, 64]
+        vf: [64, 64]
+      features_extractor_kwargs:
+        features_dim: 64
+      normalize_images: false
+
+  # PPO with masking Parameters
+  ppo_masking:
+    policy: "CnnPolicy"
+    learning_rate: 0.0003
+    n_steps: 2048
+    batch_size: 64
+    n_epochs: 10
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_range: 0.2
+    clip_range_vf: null
+    normalize_advantage: true
+    ent_coef: 0.01
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+    target_kl: null
+    policy_kwargs:
+      net_arch:
+        pi: [64, 64]
+        vf: [64, 64]
+      features_extractor_kwargs:
+        features_dim: 64
+      normalize_images: false
+

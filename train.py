@@ -1,20 +1,20 @@
 import os
 import sys
+import yaml
 import numpy as np
 import torch
 import random
+from stable_baselines3 import DQN, PPO
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
-from sb3_contrib.common.maskable.evaluation import evaluate_policy
+from sb3_contrib.common.maskable.evaluation import evaluate_policy as maskable_evaluate_policy
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
-from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, CallbackList
+from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback, CallbackList
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.utils import set_random_seed
-
+from typing import Dict, Any
 
 from assembly_gym_env import AssemblyGymEnv
-sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
-from tasks import Bridge
 
 class InfoCallback(BaseCallback):
 
@@ -66,35 +66,118 @@ class InfoCallback(BaseCallback):
 
 def mask_fn(env):
     return env.get_action_masks()
-                
-def make_env(seed=None):
-    task = Bridge(num_stories=2)
-    env = AssemblyGymEnv(
-        task=task,
-        max_blocks=10,
-        xlim=(-5, 5),
-        zlim=(0, 10),
-        img_size=(64, 64),
-        mu=0.8,
-        density=1.0,
-        invalid_action_penalty=1.0,
-        failed_placement_penalty=0.0,
-        truncated_penalty=1.0,
-        max_steps=200,
-        state_representation='basic', # One of 'basic', 'intensity' or 'multi_channels'
-        reward_representation='basic' # One of 'basic' or 'reshaped'
-    )
+
+def create_task(config):
     
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
+    from blocks import Cube, Trapezoid
+    from tasks import Empty, Tower, Bridge, DoubleBridge
+    
+    task_type = config['task_type']
+    
+    # Get floor positions
+    floor_positions = config['floor_positions']
+    
+    if task_type == 'Empty':
+        return Empty(shapes=[])
+    
+    elif task_type == 'Tower':
+        # Parse shape names into actual shape objects
+        shapes = []
+        for shape_name in config['tower']['shapes']:
+            if shape_name == 'Cube':
+                shapes.append(Cube())
+            elif shape_name == 'Trapezoid':
+                shapes.append(Trapezoid())
+                
+        return Tower(
+            targets=config['tower']['targets'],
+            obstacles=config['tower'].get('obstacles'),
+            name=config['tower'].get('name', 'Tower'),
+            floor_positions=floor_positions,
+            shapes=shapes
+        )
+    
+    elif task_type == 'Bridge':
+        # Parse shape names into actual shape objects
+        shapes = []
+        for shape_name in config['bridge'].get('shapes', ['Cube', 'Trapezoid']):
+            if shape_name == 'Cube':
+                shapes.append(Cube())
+            elif shape_name == 'Trapezoid':
+                shapes.append(Trapezoid())
+                
+        return Bridge(
+            num_stories=config['bridge']['num_stories'],
+            width=config['bridge'].get('width', 1),
+            floor_positions=floor_positions,
+            shapes=shapes,
+            name=config['bridge'].get('name', 'Bridge')
+        )
+    
+    elif task_type == 'DoubleBridge':
+        # Parse shape names into actual shape objects
+        shapes = []
+        for shape_name in config['double_bridge'].get('shapes', ['Trapezoid', 'Cube']):
+            if shape_name == 'Cube':
+                shapes.append(Cube())
+            elif shape_name == 'Trapezoid':
+                shapes.append(Trapezoid())
+                
+        return DoubleBridge(
+            num_stories=config['double_bridge']['num_stories'],
+            with_top=config['double_bridge'].get('with_top', False),
+            shapes=shapes,
+            floor_positions=floor_positions,
+            name=config['double_bridge'].get('name', 'DoubleBridge')
+        )
+    
+    else:
+        raise ValueError(f"Unknown task type: {task_type}")
+      
+def make_env(config, seed=None):
+    
+    task = create_task(config['task'])
+    
+    # Extract environment configuration
+    env_config = config['env']
+    
+    # Create the environment
+    env = AssemblyGymEnv(
+            task=task,  # Define your task creation function
+            max_blocks=env_config['max_blocks'],
+            xlim=env_config['xlim'],
+            zlim=env_config['zlim'],
+            img_size=tuple(env_config['img_size']),
+            mu=env_config['mu'],
+            density=env_config['density'],
+            invalid_action_penalty=env_config['invalid_action_penalty'],
+            failed_placement_penalty=env_config['failed_placement_penalty'],
+            truncated_penalty=env_config['truncated_penalty'],
+            max_steps=env_config['max_steps'],
+            state_representation=env_config['state_representation'],
+            reward_representation=env_config['reward_representation'],
+        )
+    
+    # Set seed if provided
     if seed is not None:
         env.seed(seed)
     
-    # Wrap the environment with the ActionMasker
-    env = ActionMasker(env, mask_fn)
+    # Wrap with action masking if enabled
+    if env_config['use_action_masking']:
+        env = ActionMasker(env, mask_fn)
+        
+    # Visualize the environment
+    #env.render(mode='human')
     
     return env
 
 def main():
     
+    # Load configuration
+    with open('config.yaml', 'r') as file:
+        config = yaml.safe_load(file)
+        
     # Set random seed for reproducibility
     seed = 42
     set_random_seed(seed)
@@ -102,72 +185,126 @@ def main():
     np.random.seed(seed)
     random.seed(seed)
     
+    # Get agent type from config
+    agent_type = config['agent']['use_agent']
+    
     # Create log directory
-    log_dir = "logs/ppo_masking"
-    os.makedirs(log_dir, exist_ok=True)
+    log_dir = f"logs/{agent_type}"
     model_dir = os.path.join(log_dir, "models")
-    os.makedirs(model_dir, exist_ok=True)
-    os.makedirs(model_dir, exist_ok=True)
     tensorboard_log = os.path.join(log_dir, "tensorboard")
+    os.makedirs(log_dir, exist_ok=True)
+    os.makedirs(model_dir, exist_ok=True)
+    os.makedirs(tensorboard_log, exist_ok=True)
 
     # Create the environment
-    env = make_env(seed)
+    env = make_env(config, seed)
     env = Monitor(env, log_dir)
     
     # Create an evaluation environment
-    eval_env = make_env()
+    eval_env = make_env(config)
     eval_env = Monitor(eval_env, os.path.join(log_dir, "eval"))
     
-    # Configure policy network
-    policy_kwargs = dict(
-        net_arch=dict(
-            pi=[64, 64],
-            vf=[64, 64]  
-        ),
-        normalize_images=False
-    )
+    # Get agent from config
+    agent_config = config['agent'][agent_type].copy()
     
-    # Create the PPO agent 
-    model = MaskablePPO(
-        "CnnPolicy",  
-        env,
-        learning_rate=3e-4,  # Learning rate
-        n_steps=2048,        # Horizon (rollout) length
-        batch_size=64,       # Minibatch size for updates
-        n_epochs=10,         # Number of optimization epochs
-        gamma=0.99,          # Same discount factor
-        gae_lambda=0.95,     # GAE parameter
-        clip_range=0.2,      # PPO clipping parameter
-        policy_kwargs=policy_kwargs,
-        tensorboard_log=tensorboard_log,
-        verbose=1
-    )
-
+    # Extract policy kwargs
+    policy_kwargs = agent_config.pop('policy_kwargs')
+    policy = agent_config.pop('policy')
+    
+    # Total timesteps for training from config
+    total_timesteps = config['agent']['total_timesteps']
+    
+    # Create the agent based on type
+    if 'dqn' in agent_type:
+        model = DQN(
+            policy,
+            env,
+            tensorboard_log=tensorboard_log,
+            verbose=config['agent']['verbose'],
+            policy_kwargs=policy_kwargs,
+            **agent_config
+        )
+        
+        # Set up evaluation callback for DQN
+        eval_callback = EvalCallback(
+            eval_env,
+            best_model_save_path=os.path.join(model_dir, "best_model"),
+            log_path=os.path.join(log_dir, "eval_results"),
+            eval_freq=5000,
+            n_eval_episodes=3,
+            deterministic=True,
+            render=False
+        )
+        
+    elif 'ppo' in agent_type:
+        model = PPO(
+            policy,
+            env,
+            tensorboard_log=tensorboard_log,
+            verbose=config['agent']['verbose'],
+            policy_kwargs=policy_kwargs,
+            **agent_config
+        )
+        
+        # Set up evaluation callback for DQN
+        eval_callback = EvalCallback(
+            eval_env,
+            best_model_save_path=os.path.join(model_dir, "best_model"),
+            log_path=os.path.join(log_dir, "eval_results"),
+            eval_freq=5000,
+            n_eval_episodes=3,
+            deterministic=True,
+            render=False
+        )
+    elif 'ppo_masking' in agent_type:
+        # Make sure environment has action masking enabled
+        if not config['env']['use_action_masking']:
+            print("Warning: Using ppo_masking but action masking is not enabled in environment config.")
+            print("Enabling action masking automatically.")
+            # Recreate environments with masking
+            env = ActionMasker(env.unwrapped, mask_fn)
+            env = Monitor(env, log_dir)
+            eval_env = ActionMasker(eval_env.unwrapped, mask_fn)
+            eval_env = Monitor(eval_env, os.path.join(log_dir, "eval"))
+        
+        model = MaskablePPO(
+            policy,
+            env,
+            tensorboard_log=tensorboard_log,
+            verbose=config['agent']['verbose'],
+            policy_kwargs=policy_kwargs,
+            **agent_config
+        )
+        
+        # Set up maskable evaluation callback for MaskablePPO
+        eval_callback = MaskableEvalCallback(
+            eval_env,
+            best_model_save_path=os.path.join(model_dir, "best_model"),
+            log_path=os.path.join(log_dir, "eval_results"),
+            eval_freq=5000,
+            n_eval_episodes=5,
+            deterministic=True,
+            render=False
+        )
+        
+    else:
+        raise ValueError(f"Unknown agent type: {agent_type}")
+    
     # Set up checkpoint callback to save models periodically
     checkpoint_callback = CheckpointCallback(
         save_freq=10000,  # Save every 10000 timesteps
         save_path=os.path.join(model_dir, "checkpoints"),
-        name_prefix="ppo_masking",
-    )
-
-    # Set up evaluation callback
-    eval_callback = MaskableEvalCallback(
-        eval_env,
-        best_model_save_path=os.path.join(model_dir, "best_model"),
-        log_path=os.path.join(log_dir, "eval_results"),
-        eval_freq=5000,  # Evaluate every 5000 timesteps
-        n_eval_episodes=5,  # Number of episodes to evaluate
-        deterministic=True,  # Use deterministic actions for evaluation
-        render=False
+        name_prefix=f"{agent_type}"
     )
 
     # Set up the info callback
     info_callback = InfoCallback()
+    
     # Combine all callbacks
     callbacks = CallbackList([checkpoint_callback, eval_callback, info_callback])
     
-    # Total timesteps for training
-    total_timesteps = 500000
+    print(f"Starting {agent_type.upper()} training for {total_timesteps} timesteps...")
+    
     model.learn(
         total_timesteps=total_timesteps,  
         callback=callbacks,
@@ -180,13 +317,22 @@ def main():
     print(f"Training completed. Final model saved to {final_model_path}")
     
     # Evaluate the trained model
-    print("\nEvaluating the trained model...")
-    mean_reward, std_reward = evaluate_policy(
-        model, 
-        eval_env, 
-        n_eval_episodes=10, 
-        deterministic=True
+    # Use the correct evaluation function based on agent type
+    if 'ppo_masking' in agent_type:
+        mean_reward, std_reward = maskable_evaluate_policy(
+            model,
+            eval_env,
+            n_eval_episodes=10,
+            deterministic=True
         )
+    else:
+        mean_reward, std_reward = evaluate_policy(
+            model,
+            eval_env,
+            n_eval_episodes=10,
+            deterministic=True
+        )
+        
     print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
     
 if __name__ == "__main__":

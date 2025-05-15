@@ -28,10 +28,21 @@ class Action:
     def __hash__(self):
         return hash((self.target_block, self.target_face, self.shape, self.face, self.offset_x))
     
-def gaussian(loc, xlim, zlim, img_size=(512,512), sigma=2):
+def gaussian(loc, xlim, zlim, img_size=(512,512), sigma=2, reward_representation='basic'):
     x, y = loc
     X, Y = np.meshgrid(np.linspace(*xlim, img_size[0]), np.linspace(zlim[1], zlim[0], img_size[1]))
-    return np.exp(-((X - x)**2 + (Y - y)**2) / (2*sigma**2)).reshape(img_size)
+    
+    if reward_representation == 'basic':
+        mask = np.ones(img_size) # mask for basic representation
+        
+    elif reward_representation == 'reshaped':
+        mask = (Y <= y) # mask for reshaped representation
+        
+    else:
+        raise ValueError(f"Unknown reward representation: {reward_representation}. Supported values are 'basic' or 'reshaped'.")
+    
+    gauss = np.exp(-((X - x)**2 + (Y - y)**2) / (2*sigma**2)) * mask
+    return gauss.reshape(img_size)
 
 class AssemblyEnv(CRA_Assembly):
 
@@ -94,6 +105,11 @@ class AssemblyEnv(CRA_Assembly):
                 state = torch.maximum(state, obstacle_img * 0.6)
 
             return state
+
+        elif self.state_representation == 'multi_channels':
+            self.state_representation = 'basic'
+            print("Not yet  implemented, switch to 'basic' representation")
+            return torch.zeros(self.img_size)
             
         else:
             raise ValueError(f"Unknown state representation: {self.state_representation}. Supported values are 'basic', 'intensity' or 'multi_channels'.")
@@ -120,14 +136,13 @@ class AssemblyEnv(CRA_Assembly):
                 y = (y - self.zlim[0]) / (self.zlim[1] - self.zlim[0])
                 reward_features[round((1-y)*self.img_size[0]), round(x*self.img_size[1])] = 1
             else:
-                reward_features += gaussian((x,y), self.xlim, self.zlim, self.img_size, sigma)
+                reward_features += gaussian((x,y), self.xlim, self.zlim, self.img_size, sigma, self.reward_representation)
 
         reward_features = torch.tensor(reward_features).float()
         
         # reward_features /= reward_features.sum()
         reward_features /= len(self.task.targets)
         # reward_features -= reward_features.max() / 2
-
         return reward_features
     
     def create_block(self, action : Action):

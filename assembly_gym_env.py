@@ -17,7 +17,7 @@ from blocks import Floor
 class AssemblyGymEnv(gym.Env):
     """Gym wrapper for the BlockAssembly environment"""
     def __init__(self, task, max_blocks=10, xlim=(-5, 5), zlim=(0, 10), 
-                 img_size=(64, 64), mu=0.8, density=1.0, invalid_action_penalty=0.5,
+                 img_size=(64, 64), mu=0.8, density=1.0, invalid_action_penalty=1.0,
                  failed_placement_penalty=0.5, truncated_penalty=1.0, max_steps=200,
                  state_representation='basic', reward_representation='basic'):
         super().__init__()
@@ -222,9 +222,9 @@ class AssemblyGymEnv(gym.Env):
     def render(self, mode='human'):
         if mode == 'human':
             fig, ax = plt.subplots(figsize=(10, 10))
-            plot_assembly_env(self.env, fig=fig, ax=ax, task=self.env.task, face_numbers=True)
-            plt.axis('equal')
+            plot_assembly_env(self.env, fig=fig, ax=ax, task=self.env.task, equal=True, face_numbers=True)
             plt.show()
+            
             return None
         else:
             raise NotImplementedError(f"Render mode {mode} not implemented")
@@ -237,7 +237,12 @@ def main():
     
     # Create environment
     task = Bridge(num_stories=2)
-    wrapped_env = AssemblyGymEnv(task, max_blocks=3, state_representation='intensity')
+    wrapped_env = AssemblyGymEnv(
+        task=task, 
+        max_blocks=3, 
+        state_representation='intensity', 
+        reward_representation='reshaped'
+    )
 
     done = False
     rewards = 0
