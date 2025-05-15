@@ -123,6 +123,32 @@ def plot_assembly_env(assembly, fig=None, ax=None, plot_forces=False, force_scal
     if task is not None:
         plot_task(task, fig, ax)
 
+    # Add legend
+    from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+    
+    legend_elements = [
+        Patch(facecolor='tab:blue', edgecolor='k', label='Placed Blocks'),
+        Patch(facecolor='tab:red', edgecolor='k', label='Obstacles'),
+        Line2D([0], [0], marker='*', color='w', markerfacecolor='tab:green', 
+               markersize=15, label='Target Positions')
+    ]
+    
+    # Add support blocks to legend if they exist
+    # if any(node.get('is_support', False) for _, node in graph.node.items()):
+    #     legend_elements.append(Patch(facecolor='tab:orange', edgecolor='k', label='Support Blocks'))
+    
+    # Add grey ground block to legend if it exists
+    if -1 in graph.node:
+        legend_elements.append(Patch(facecolor='gray', edgecolor='k', label='Ground'))
+    
+    # Add forces to legend if they're being plotted
+    if plot_forces:
+        legend_elements.append(Line2D([0], [0], marker='o', color='w', 
+                              markerfacecolor='tab:green', markersize=10, label='Force Points'))
+    
+    ax.legend(handles=legend_elements, loc='best', fontsize=20)
+
     # bounds = assembly.bounds
     # if bounds is not None:
     #     ax.set_xlim(assembly)
@@ -135,4 +161,3 @@ def render_block_2d(block, xlim, zlim, img_size=(512,512), device='cpu', dtype=t
     X, Y = np.meshgrid(np.linspace(*xlim, img_size[0]), np.linspace(zlim[1], zlim[0], img_size[1]))
     positions = np.vstack([X.ravel(), Y.ravel()]).T
     return torch.tensor(block.contains_2d_convex(positions).reshape(img_size), device=device).to(dtype)
-

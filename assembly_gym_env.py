@@ -72,7 +72,7 @@ class AssemblyGymEnv(gym.Env):
         )
         
         self.reset()
-        
+    
     def _generate_action_mask(self,):
         
         available_actions = self.env.available_actions(num_block_offsets=self.num_offsets)
@@ -174,7 +174,12 @@ class AssemblyGymEnv(gym.Env):
     def step(self, action_idx):
         
         # Initialize info dict
-        self.info = {}
+        self.info = {
+            'blocks_placed': 0,
+            'targets_reached': None,
+            'is_failed_placement': False,
+            'is_invalid_action': False,
+        }
         
         self.steps += 1
         step_reward = 0.0
@@ -188,7 +193,7 @@ class AssemblyGymEnv(gym.Env):
             self.info['is_invalid_action'] = True
             step_reward -= self.invalid_action_penalty
             state = self._format_state()
-            return state, step_reward, True, truncated, self.info
+            return state, step_reward, False, truncated, self.info
             
         action = self.idx_to_action(action_idx)
         
@@ -198,7 +203,6 @@ class AssemblyGymEnv(gym.Env):
         
         self.info['blocks_placed'] = len(self.env.block_list) - 1  # Subtract 1 for the floor
         self.info['targets_reached'] = f"{self.env.num_targets_reached}/{len(self.env.task.targets)}"
-        
         # Handle failed placement
         if state is None:
             self.info['is_failed_placement'] = True
@@ -222,7 +226,7 @@ class AssemblyGymEnv(gym.Env):
     def render(self, mode='human'):
         if mode == 'human':
             fig, ax = plt.subplots(figsize=(10, 10))
-            plot_assembly_env(self.env, fig=fig, ax=ax, task=self.env.task, equal=True, face_numbers=True)
+            plot_assembly_env(self.env, fig=fig, ax=ax, task=self.env.task, equal=True, face_numbers=False)
             plt.show()
             
             return None
@@ -236,10 +240,10 @@ class AssemblyGymEnv(gym.Env):
 def main():
     
     # Create environment
-    task = Bridge(num_stories=2)
+    task = Tower(targets=[(0,3.5)], obstacles=[(0,0.5), (0, 1.5), (0, 2.5), (-1,0.5), (1,0.5), (-1,1.5), (-3.5, 0.5), (-3.5, 1.5), (4, 0.5), (4, 1.5)])
     wrapped_env = AssemblyGymEnv(
         task=task, 
-        max_blocks=3, 
+        max_blocks=5, 
         state_representation='intensity', 
         reward_representation='reshaped'
     )

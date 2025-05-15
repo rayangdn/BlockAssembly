@@ -12,7 +12,7 @@ from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback, CallbackList
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.utils import set_random_seed
-from typing import Dict, Any
+from stable_baselines3.common.evaluation import evaluate_policy
 
 from assembly_gym_env import AssemblyGymEnv
 
@@ -24,6 +24,7 @@ class InfoCallback(BaseCallback):
         self.cumulative_invalid_actions = 0
         self.cumulative_failed_placements = 0
         self.total_steps = 0
+        self.total_available_steps = 0 # Counter for total available steps in the environment (where we succed to get an available action)
         
     def _on_step(self):
         # Extract info from the most recent environment step
@@ -44,22 +45,24 @@ class InfoCallback(BaseCallback):
         
         # Log only cumulative invalid actions (no per-step)
         if "is_invalid_action" in info:
-            if int(info["is_invalid_action"]):
+            if info["is_invalid_action"]:  
                 self.cumulative_invalid_actions += 1
+            else:
+                self.total_available_steps += 1
             self.logger.record("env/cumulative_invalid_actions", self.cumulative_invalid_actions)
             # Add rate of invalid actions (percentage)
             if self.total_steps > 0:
                 invalid_rate = (self.cumulative_invalid_actions / self.total_steps) * 100
                 self.logger.record("env/invalid_action_rate", invalid_rate)
-        
+            
         # Log only cumulative failed placements (no per-step)
         if "is_failed_placement" in info:
-            if int(info["is_failed_placement"]):
+            if info["is_failed_placement"]:
                 self.cumulative_failed_placements += 1
             self.logger.record("env/cumulative_failed_placements", self.cumulative_failed_placements)
             # Add rate of failed placements (percentage)
-            if self.total_steps > 0:
-                failure_rate = (self.cumulative_failed_placements / self.total_steps) * 100
+            if self.total_available_steps > 0:
+                failure_rate = (self.cumulative_failed_placements / self.total_available_steps) * 100
                 self.logger.record("env/failed_placement_rate", failure_rate)
         
         return True
@@ -144,7 +147,7 @@ def make_env(config, seed=None):
     
     # Create the environment
     env = AssemblyGymEnv(
-            task=task,  # Define your task creation function
+            task=task,  
             max_blocks=env_config['max_blocks'],
             xlim=env_config['xlim'],
             zlim=env_config['zlim'],
@@ -213,9 +216,9 @@ def main():
     
     # Total timesteps for training from config
     total_timesteps = config['agent']['total_timesteps']
-    
     # Create the agent based on type
-    if 'dqn' in agent_type:
+    if agent_type == 'dqn':
+        print("Using DQN agent")
         model = DQN(
             policy,
             env,
@@ -236,7 +239,8 @@ def main():
             render=False
         )
         
-    elif 'ppo' in agent_type:
+    elif agent_type == 'ppo':
+        print("Using PPO agent")
         model = PPO(
             policy,
             env,
@@ -256,7 +260,8 @@ def main():
             deterministic=True,
             render=False
         )
-    elif 'ppo_masking' in agent_type:
+    elif agent_type == 'ppo_masking':
+        print("Using Maskable PPO agent")
         # Make sure environment has action masking enabled
         if not config['env']['use_action_masking']:
             print("Warning: Using ppo_masking but action masking is not enabled in environment config.")

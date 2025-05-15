@@ -71,10 +71,10 @@ agent:
 
   # Common Parameters
   verbose: 1
-  use_agent: 'ppo'  # Options: "dqn", "ppo", "ppo_masking"
+  use_agent: 'ppo_masking'  # Options: "dqn", "ppo", "ppo_masking"
 
   # Training Parameters
-  total_timesteps: 1000000
+  total_timesteps: 100000
 
   # DQN Parameters
   dqn:
