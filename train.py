@@ -61,7 +61,7 @@ from assembly_gym_env import AssemblyGymEnv
 sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
 from tasks import Bridge
                 
-def make_env():
+def make_env(seed=None):
     task = Bridge(num_stories=2)
     env = AssemblyGymEnv(
         task=task,
@@ -76,6 +76,8 @@ def make_env():
         truncated_penalty=1.0,
         max_steps=200
     )
+    if seed is not None:
+        env.seed(seed)
     return env
 
 def main():
@@ -86,6 +88,7 @@ def main():
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
+    
     # Create log directory
     log_dir = "logs/dqn_no_masking"
     os.makedirs(log_dir, exist_ok=True)
@@ -95,7 +98,7 @@ def main():
     tensorboard_log = os.path.join(log_dir, "tensorboard")
 
     # Create the environment
-    env = make_env()
+    env = make_env(seed)
     env = Monitor(env, log_dir)
     
     # Create an evaluation environment
@@ -105,6 +108,7 @@ def main():
     # Configure policy network
     policy_kwargs = dict(
         net_arch=[64, 64],  # Hidden layer sizes
+        normalize_images=False
     )
     
     # Create the DQN agent 
@@ -152,7 +156,7 @@ def main():
     callbacks = CallbackList([checkpoint_callback, eval_callback, info_callback])
     
     # Total timesteps for training
-    total_timesteps = 500000
+    total_timesteps = 100000
     model.learn(
         total_timesteps=total_timesteps,  
         callback=callbacks,
@@ -173,27 +177,6 @@ def main():
         deterministic=True
         )
     print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
-    
-    # Run visualization test
-    print("\nRunning visualization tests...")
-    test_env = make_env()
-    
-    for episode in range(3): 
-        obs, _ = test_env.reset()
-        done = False
-        truncated = False
-        episode_reward = 0
-        step_count = 0
-        
-        while not (done or truncated):
-            action, _states = model.predict(obs, deterministic=True)
-            obs, reward, done, truncated, info = test_env.step(action)
-            episode_reward += reward
-            step_count += 1
-        
-        print(f"Episode {episode+1}: Reward = {episode_reward:.2f}, Steps = {step_count}")
-        print(f"Targets reached: {info['targets_reached']}, Blocks placed: {info['blocks_placed']}")
-        test_env.render()
     
 if __name__ == "__main__":
     main()

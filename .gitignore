@@ -1,5 +1,5 @@
 **/__pycache__/
-**/lib/__pycache__
+**/lib/__pycache__/
 **/*.py[cod]
 **/*.pyo
 **/*.pyd
