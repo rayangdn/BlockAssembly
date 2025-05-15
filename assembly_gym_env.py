@@ -164,8 +164,7 @@ class AssemblyGymEnv(gym.Env):
     
     def _format_state(self):
         # Convert the state feature to a numpy array
-        state = self.env.state_feature.numpy() * 255.0
-        state = np.clip(state, 0, 255).astype(np.uint8)
+        state = self.env.state_feature.numpy()
         
         # Reshape the state to match the observation space
         if len(state.shape) == 2:

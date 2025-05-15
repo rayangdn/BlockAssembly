@@ -122,6 +122,7 @@ def main():
             pi=[64, 64],
             vf=[64, 64]  
         ),
+        normalize_images=False
     )
     
     # Create the PPO agent 
