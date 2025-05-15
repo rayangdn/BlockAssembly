@@ -3,11 +3,18 @@ import sys
 import numpy as np
 import torch
 import random
-from stable_baselines3 import PPO  
-from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, EvalCallback, CallbackList
+from sb3_contrib import MaskablePPO
+from sb3_contrib.common.wrappers import ActionMasker
+from sb3_contrib.common.maskable.evaluation import evaluate_policy
+from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
+from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, CallbackList
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.utils import set_random_seed
+
+
+from assembly_gym_env import AssemblyGymEnv
+sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
+from tasks import Bridge
 
 class InfoCallback(BaseCallback):
 
@@ -18,7 +25,7 @@ class InfoCallback(BaseCallback):
         self.cumulative_failed_placements = 0
         self.total_steps = 0
         
-    def _on_step(self) -> bool:
+    def _on_step(self):
         # Extract info from the most recent environment step
         info = self.training_env.get_attr("info")[0]
         self.total_steps += 1
@@ -57,11 +64,10 @@ class InfoCallback(BaseCallback):
         
         return True
 
-from assembly_gym_env import AssemblyGymEnv
-sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
-from tasks import Bridge
+def mask_fn(env):
+    return env.get_action_masks()
                 
-def make_env():
+def make_env(seed=None):
     task = Bridge(num_stories=2)
     env = AssemblyGymEnv(
         task=task,
@@ -72,10 +78,17 @@ def make_env():
         mu=0.8,
         density=1.0,
         invalid_action_penalty=1.0,
-        failed_placement_penalty=0.5,
+        failed_placement_penalty=0.0,
         truncated_penalty=1.0,
         max_steps=200
     )
+    
+    if seed is not None:
+        env.seed(seed)
+    
+    # Wrap the environment with the ActionMasker
+    env = ActionMasker(env, mask_fn)
+    
     return env
 
 def main():
@@ -86,8 +99,9 @@ def main():
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
+    
     # Create log directory
-    log_dir = "logs/ppo_no_masking"
+    log_dir = "logs/ppo_masking"
     os.makedirs(log_dir, exist_ok=True)
     model_dir = os.path.join(log_dir, "models")
     os.makedirs(model_dir, exist_ok=True)
@@ -95,7 +109,7 @@ def main():
     tensorboard_log = os.path.join(log_dir, "tensorboard")
 
     # Create the environment
-    env = make_env()
+    env = make_env(seed)
     env = Monitor(env, log_dir)
     
     # Create an evaluation environment
@@ -104,14 +118,17 @@ def main():
     
     # Configure policy network
     policy_kwargs = dict(
-        net_arch=[64, 64],  # Hidden layer sizes
+        net_arch=dict(
+            pi=[64, 64],
+            vf=[64, 64]  
+        ),
     )
     
     # Create the PPO agent 
-    model = PPO(
-        "CnnPolicy",  # Keep using CnnPolicy for image inputs
+    model = MaskablePPO(
+        "CnnPolicy",  
         env,
-        learning_rate=3e-4,  # PPO typically uses higher learning rates
+        learning_rate=3e-4,  # Learning rate
         n_steps=2048,        # Horizon (rollout) length
         batch_size=64,       # Minibatch size for updates
         n_epochs=10,         # Number of optimization epochs
@@ -127,11 +144,11 @@ def main():
     checkpoint_callback = CheckpointCallback(
         save_freq=10000,  # Save every 10000 timesteps
         save_path=os.path.join(model_dir, "checkpoints"),
-        name_prefix="ppo_no_masking",
+        name_prefix="ppo_masking",
     )
 
     # Set up evaluation callback
-    eval_callback = EvalCallback(
+    eval_callback = MaskableEvalCallback(
         eval_env,
         best_model_save_path=os.path.join(model_dir, "best_model"),
         log_path=os.path.join(log_dir, "eval_results"),
@@ -168,27 +185,6 @@ def main():
         deterministic=True
         )
     print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
-    
-    # Run visualization test
-    print("\nRunning visualization tests...")
-    test_env = make_env()
-    
-    for episode in range(3): 
-        obs, _ = test_env.reset()
-        done = False
-        truncated = False
-        episode_reward = 0
-        step_count = 0
-        
-        while not (done or truncated):
-            action, _states = model.predict(obs, deterministic=True)
-            obs, reward, done, truncated, info = test_env.step(action)
-            episode_reward += reward
-            step_count += 1
-        
-        print(f"Episode {episode+1}: Reward = {episode_reward:.2f}, Steps = {step_count}")
-        print(f"Targets reached: {info['targets_reached']}, Blocks placed: {info['blocks_placed']}")
-        test_env.render()
     
 if __name__ == "__main__":
     main()

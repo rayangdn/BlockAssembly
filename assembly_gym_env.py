@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import random
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
-from tasks import Bridge
+from tasks import Bridge, Tower
 from assembly_env import AssemblyEnv, Action
 from rendering import plot_assembly_env
 from blocks import Floor
@@ -17,7 +17,7 @@ from blocks import Floor
 class AssemblyGymEnv(gym.Env):
     """Gym wrapper for the BlockAssembly environment"""
     def __init__(self, task, max_blocks=10, xlim=(-5, 5), zlim=(0, 10), 
-                 img_size=(64, 64), mu=0.8, density=1.0, invalid_action_penalty=1.0,
+                 img_size=(64, 64), mu=0.8, density=1.0, invalid_action_penalty=0.5,
                  failed_placement_penalty=0.5, truncated_penalty=1.0, max_steps=500):
         super().__init__()
         
@@ -73,18 +73,18 @@ class AssemblyGymEnv(gym.Env):
     def _generate_action_mask(self,):
         
         available_actions = self.env.available_actions(num_block_offsets=self.num_offsets)
-        self.action_mask = np.zeros(self.total_actions, dtype=np.float32)
+        self.action_mask = np.full(self.total_actions, False, dtype=bool)
         
         for action in available_actions:
             try:
                 idx = self.action_to_idx(action)
-                self.action_mask[idx] = 1.0
+                self.action_mask[idx] = True
             except ValueError:
                 # If action not found in mapping, skip it
                 print(f"Warning: Action {action} not found in mapping, skipping.")
                 continue
     
-    def get_action_mask(self):
+    def get_action_masks(self):
         return self.action_mask
     
     def idx_to_action(self, action_idx, overlap=0.2):
@@ -159,14 +159,6 @@ class AssemblyGymEnv(gym.Env):
         self.steps = 0
         self._generate_action_mask()
         
-        # Initialize info dict
-        self.info = {
-            'targets_reached': f"{0}/{len(self.env.task.targets)}",
-            'blocks_placed': 0,  # Subtract 1 for the floor
-            'is_invalid_action': False,
-            'is_failed_placement': False,
-        }
-        
         # Return observation dictionary
         return obs, {}
     
@@ -179,8 +171,11 @@ class AssemblyGymEnv(gym.Env):
         if len(state.shape) == 2:
             state = state.reshape(1, *state.shape)
         return state
-    
+
     def step(self, action_idx):
+        
+        # Initialize info dict
+        self.info = {}
         
         self.steps += 1
         step_reward = 0.0
@@ -190,11 +185,11 @@ class AssemblyGymEnv(gym.Env):
             step_reward -= self.truncated_penalty
         
         # Check for invalid action
-        if self.action_mask[action_idx] == 0.0:
+        if self.action_mask[action_idx] == False:
             self.info['is_invalid_action'] = True
             step_reward -= self.invalid_action_penalty
             state = self._format_state()
-            return state, step_reward, False, truncated, self.info
+            return state, step_reward, True, truncated, self.info
             
         action = self.idx_to_action(action_idx)
         
@@ -210,8 +205,7 @@ class AssemblyGymEnv(gym.Env):
             self.info['is_failed_placement'] = True
             step_reward -= self.failed_placement_penalty
             state = self._format_state()
-            return state, step_reward, False, truncated, self.info
-            
+            return state, step_reward, done, truncated, self.info
         if not done:
             # Update the action mask
             self._generate_action_mask()
@@ -229,7 +223,7 @@ class AssemblyGymEnv(gym.Env):
     def render(self, mode='human'):
         if mode == 'human':
             fig, ax = plt.subplots(figsize=(10, 10))
-            plot_assembly_env(self.env, fig=fig, ax=ax, task=self.env.task)
+            plot_assembly_env(self.env, fig=fig, ax=ax, task=self.env.task, face_numbers=True)
             plt.axis('equal')
             plt.show()
             return None
@@ -244,8 +238,8 @@ def main():
     
     # Create environment
     task = Bridge(num_stories=2)
-    wrapped_env = AssemblyGymEnv(task, max_blocks=5)
-    
+    wrapped_env = AssemblyGymEnv(task, max_blocks=3)
+   
     done = False
     rewards = 0
     while not done:
@@ -265,6 +259,10 @@ def main():
         rewards += r
     
     wrapped_env.render(mode='human')
+    obs = wrapped_env.env.state_feature.permute(1,2,0).numpy()
+    plt.imshow(obs)
+    plt.show()
+    print(f"Final observation: {obs.shape}")
     
 if __name__ == "__main__":
     main()
