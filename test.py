@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from stable_baselines3 import DQN, PPO
 from sb3_contrib import MaskablePPO
+from sb3_contrib.common.maskable.utils import get_action_masks
 from sb3_contrib.common.wrappers import ActionMasker
 from typing import Dict, Any
 
@@ -59,7 +60,7 @@ def main():
             
             # Get action masks for MaskablePPO if needed
             if isinstance(model, MaskablePPO):
-                action_masks = test_env.get_action_masks()
+                action_masks = get_action_masks(test_env)
                 action, _states = model.predict(obs, action_masks=action_masks, deterministic=True)
             else:
                 action, _states = model.predict(obs, deterministic=True)

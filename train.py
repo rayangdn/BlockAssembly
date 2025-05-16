@@ -216,6 +216,7 @@ def main():
     
     # Total timesteps for training from config
     total_timesteps = config['agent']['total_timesteps']
+    
     # Create the agent based on type
     if agent_type == 'dqn':
         print("Using DQN agent")
@@ -323,7 +324,7 @@ def main():
     
     # Evaluate the trained model
     # Use the correct evaluation function based on agent type
-    if 'ppo_masking' in agent_type:
+    if agent_type == 'ppo_masking':
         mean_reward, std_reward = maskable_evaluate_policy(
             model,
             eval_env,

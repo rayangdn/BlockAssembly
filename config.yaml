@@ -21,8 +21,8 @@ env:
   max_steps: 200
 
   # Representation Settings
-  state_representation: "basic"   # Options: "basic", "intensity", "multi_channels"
-  reward_representation: "basic"  # Options: "basic", "reshaped"
+  state_representation: "intensity"   # Options: "basic", "intensity", "multi_channels"
+  reward_representation: "reshaped"  # Options: "basic", "reshaped"
 
   # Action Masking
   use_action_masking: True  # Set to True to enable action masking for PPO
@@ -71,7 +71,7 @@ agent:
 
   # Common Parameters
   verbose: 1
-  use_agent: 'ppo_masking'  # Options: "dqn", "ppo", "ppo_masking"
+  use_agent: 'dqn'  # Options: "dqn", "ppo", "ppo_masking"
 
   # Training Parameters
   total_timesteps: 100000
@@ -88,7 +88,7 @@ agent:
     train_freq: 4                   # Update the model every 4 steps
     gradient_steps: 1               # How many gradient updates per update
     target_update_interval: 1000    # Target network update frequency
-    exploration_fraction: 0.6       # Fraction of training to reduce epsilon
+    exploration_fraction: 0.8      # Fraction of training to reduce epsilon
     exploration_initial_eps: 1.0    # Initial random action probability
     exploration_final_eps: 0.05     # Final random action probability
     policy_kwargs:

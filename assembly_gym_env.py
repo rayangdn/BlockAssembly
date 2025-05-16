@@ -16,7 +16,7 @@ from blocks import Floor
 
 class AssemblyGymEnv(gym.Env):
     """Gym wrapper for the BlockAssembly environment"""
-    def __init__(self, task, max_blocks=10, xlim=(-5, 5), zlim=(0, 10), 
+    def __init__(self, task, max_blocks=10, xlim=(-3, 3), zlim=(0, 6), 
                  img_size=(64, 64), mu=0.8, density=1.0, invalid_action_penalty=1.0,
                  failed_placement_penalty=0.5, truncated_penalty=1.0, max_steps=200,
                  state_representation='basic', reward_representation='basic'):
@@ -65,9 +65,14 @@ class AssemblyGymEnv(gym.Env):
 
         # Define action and observation spaces
         self.action_space = spaces.Discrete(self.total_actions)
+        if state_representation == 'multi_channels':
+            C, H, W = self.max_blocks + 4, *img_size
+        else:
+            C, H, W = 1, *img_size
+            
         self.observation_space = spaces.Box(
             low=0, high=255, 
-            shape=(1, *img_size), 
+            shape=(C, H, W), 
             dtype=np.float32,
         )
         
@@ -80,17 +85,14 @@ class AssemblyGymEnv(gym.Env):
         
         for action in available_actions:
             try:
-                idx = self.action_to_idx(action)
+                idx = self._action_to_idx(action)
                 self.action_mask[idx] = True
             except ValueError:
                 # If action not found in mapping, skip it
                 print(f"Warning: Action {action} not found in mapping, skipping.")
                 continue
     
-    def get_action_masks(self):
-        return self.action_mask
-    
-    def idx_to_action(self, action_idx, overlap=0.2):
+    def _idx_to_action(self, action_idx, overlap=0.2):
         if action_idx >= len(self.all_actions):
             raise ValueError(f"Action index {action_idx} out of range")
         
@@ -122,7 +124,7 @@ class AssemblyGymEnv(gym.Env):
         return Action(target_block_idx, target_face, shape_idx, face, offset_x)
     
     
-    def action_to_idx(self, action, overlap=0.2):
+    def _action_to_idx(self, action, overlap=0.2):
         target_block_idx = action.target_block
         target_face = action.target_face
         shape_idx = action.shape
@@ -152,16 +154,6 @@ class AssemblyGymEnv(gym.Env):
             
         return action_idx         
     
-    def reset(self, seed=None, options=None):
-        self.seed(seed)
-        self.env.reset()
-        obs = self.env.state_feature.numpy().reshape(1, *self.env.state_feature.shape)
-        self.steps = 0
-        self._generate_action_mask()
-        
-        # Return observation dictionary
-        return obs, {}
-    
     def _format_state(self):
         # Convert the state feature to a numpy array
         state = self.env.state_feature.numpy()
@@ -170,7 +162,20 @@ class AssemblyGymEnv(gym.Env):
         if len(state.shape) == 2:
             state = state.reshape(1, *state.shape)
         return state
-
+    
+    def get_action_masks(self):
+        return self.action_mask
+    
+    def reset(self, seed=None, options=None):
+        self.seed(seed)
+        self.env.reset()
+        obs = self._format_state()
+        self.steps = 0
+        self._generate_action_mask()
+        
+        # Return observation dictionary
+        return obs, {}
+    
     def step(self, action_idx):
         
         # Initialize info dict
@@ -195,7 +200,7 @@ class AssemblyGymEnv(gym.Env):
             state = self._format_state()
             return state, step_reward, False, truncated, self.info
             
-        action = self.idx_to_action(action_idx)
+        action = self._idx_to_action(action_idx)
         
         # Execute the action
         state, reward, done = self.env.step(action)
@@ -209,6 +214,7 @@ class AssemblyGymEnv(gym.Env):
             step_reward -= self.failed_placement_penalty
             state = self._format_state()
             return state, step_reward, done, truncated, self.info
+        
         if not done:
             # Update the action mask
             self._generate_action_mask()
@@ -240,33 +246,76 @@ class AssemblyGymEnv(gym.Env):
 def main():
     
     # Create environment
-    task = Tower(targets=[(0,3.5)], obstacles=[(0,0.5), (0, 1.5), (0, 2.5), (-1,0.5), (1,0.5), (-1,1.5), (-3.5, 0.5), (-3.5, 1.5), (4, 0.5), (4, 1.5)])
+    # task = Tower(targets=[(0,3.5), (-3.5, 2.5), (4.0, 2.5)], obstacles=[(0,0.5), (0, 1.5), (0, 2.5), (-1,0.5), (1,0.5), (-1,1.5), (-3.5, 0.5), (-3.5, 1.5), (4, 0.5), (4, 1.5)])
+
+    task = Bridge(num_stories=3)
+    max_blocks = 5
+    state_representation = 'multi_channels' # 'basic, 'intensity', 'multi_channels'
+    reward_representation = 'reshaped'
+    
     wrapped_env = AssemblyGymEnv(
         task=task, 
-        max_blocks=5, 
-        state_representation='intensity', 
-        reward_representation='reshaped'
+        max_blocks=max_blocks, 
+        state_representation=state_representation, 
+        reward_representation=reward_representation
     )
-
-    done = False
-    rewards = 0
-    while not done:
-        
-        # Pick a random action
-        action = wrapped_env.env.random_action(wrapped_env.num_offsets, non_colliding=True, stable=True)
-        action_idx = wrapped_env.action_to_idx(action)
-        if action_idx is None:
-            print(f"Invalid action index {action_idx}, skipping...")
-            break
-        obs, r, done, truncated, info = wrapped_env.step(action_idx)
-        print(f"Step: {wrapped_env.steps}, Action: {action}, Reward: {r}, Info: {info}")
-
-        if done or truncated:
-            break
-
-        rewards += r
+    obs, r, done, truncated, info = wrapped_env.step(3)
+    obs, r, done, truncated, info = wrapped_env.step(242)
+    obs, r, done, truncated, info = wrapped_env.step(312)
+    obs, r, done, truncated, info = wrapped_env.step(20)
+    obs, r, done, truncated, info = wrapped_env.step(788)
+    final_obs = obs
     
-    wrapped_env.render(mode='human')
+    
+    
+    # done = False
+    # rewards = 0
+    # final_obs = None
+    # while not done:
+        
+    #     # Pick a random action
+    #     action = wrapped_env.env.random_action(wrapped_env.num_offsets, non_colliding=True, stable=True)
+    #     action_idx = wrapped_env._action_to_idx(action)
+    #     print(action_idx)
+    #     if action_idx is None:
+    #         print(f"Invalid action index {action_idx}, skipping...")
+    #         break
+    #     obs, r, done, truncated, info = wrapped_env.step(action_idx)
+    #     print(f"Step: {wrapped_env.steps}, Action: {action}, Reward: {r}, Info: {info}\n")
+    #     final_obs = obs
+    #     if done or truncated:
+    #         break
+
+    #     rewards += r
+        
+    #wrapped_env.render(mode='human')
+    
+    global_min = final_obs.min()
+    global_max = final_obs.max()  
+    if state_representation == 'multi_channels':
+        # Create a figure with subplots
+        fig, axes = plt.subplots(3, 3, figsize=(10, 10))
+        axes = axes.flatten()
+
+        # Plot each channel
+        for i in range(wrapped_env.max_blocks + 4):
+            axes[i].imshow(final_obs[i], cmap='viridis', vmin=global_min, vmax=global_max)
+            axes[i].set_title(f'Channel {i+1}')
+            axes[i].axis('off') 
+
+        plt.tight_layout()
+        plt.show()
+    else:
+        # Plot the single channel
+        plt.imshow(final_obs.reshape(64, 64, 1), cmap='viridis', vmin=global_min, vmax=global_max)
+        plt.title('State Feature')
+        plt.colorbar()
+        plt.show()
+    
+    # plt.imshow(wrapped_env.env.reward_feature, cmap='viridis')
+    # plt.show()
+    
+    
     
 if __name__ == "__main__":
     main()
