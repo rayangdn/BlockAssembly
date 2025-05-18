@@ -147,7 +147,7 @@ def plot_assembly_env(assembly, fig=None, ax=None, plot_forces=False, force_scal
         legend_elements.append(Line2D([0], [0], marker='o', color='w', 
                               markerfacecolor='tab:green', markersize=10, label='Force Points'))
     
-    ax.legend(handles=legend_elements, loc='best', fontsize=20)
+    #ax.legend(handles=legend_elements, loc='best', fontsize=20)
 
     # bounds = assembly.bounds
     # if bounds is not None:

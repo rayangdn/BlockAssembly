@@ -5,7 +5,7 @@
 env:
 
   # Environment Basic Parameters
-  max_blocks: 10
+  max_blocks: 5
   xlim: [-5, 5]
   zlim: [0, 10]
   img_size: [64, 64]
@@ -13,19 +13,19 @@ env:
   density: 1.0
 
   # Penalty and Reward Settings
-  invalid_action_penalty: 1.0
-  failed_placement_penalty: 0.5
-  truncated_penalty: 1.0
+  invalid_action_penalty: -0.5
+  failed_placement_penalty: -0.5
+  truncated_penalty: -0.5
 
   # Episode Configuration
-  max_steps: 200
+  max_steps: 20
 
   # Representation Settings
   state_representation: "intensity"   # Options: "basic", "intensity", "multi_channels"
   reward_representation: "reshaped"  # Options: "basic", "reshaped"
 
   # Action Masking
-  use_action_masking: True  # Set to True to enable action masking for PPO
+  use_action_masking: False  # Set to True to enable action masking for PPO
 
 
 ################################
@@ -44,10 +44,10 @@ task:
   
   # Tower task config
   tower:
-    targets: [[0, 3], [0, 6]]  # Format: [(position_x, height), ...]
-    obstacles: [[2, 2], [-2, 2]]  # Format: [(position_x, height), ...]
+    targets: [[1, 4], [0, 6], [-0.5, 2]]  # Format: [(position_x, height), ...]
+    obstacles: [[1, 2], [-1.5, 5], [-1.5, 4], [2, 2], [1, 1]]  # Format: [(position_x, height), ...]
     shapes: ["Cube"]
-    name: "Tower_2_2"  
+    name: "Tower_2_5"  
   
   # Bridge task config
   bridge:
@@ -71,7 +71,7 @@ agent:
 
   # Common Parameters
   verbose: 1
-  use_agent: 'dqn'  # Options: "dqn", "ppo", "ppo_masking"
+  use_agent: 'dqn'  # Options: "dqn", "ppo", "ppo_masking", "reinforce_masking"
 
   # Training Parameters
   total_timesteps: 100000
@@ -88,7 +88,7 @@ agent:
     train_freq: 4                   # Update the model every 4 steps
     gradient_steps: 1               # How many gradient updates per update
     target_update_interval: 1000    # Target network update frequency
-    exploration_fraction: 0.8      # Fraction of training to reduce epsilon
+    exploration_fraction: 0.8       # Fraction of training to reduce epsilon
     exploration_initial_eps: 1.0    # Initial random action probability
     exploration_final_eps: 0.05     # Final random action probability
     policy_kwargs:
@@ -146,4 +146,9 @@ agent:
       features_extractor_kwargs:
         features_dim: 64
       normalize_images: false
+
+  reinforce_masking:
+    learning_rate: 0.0001
+    gamma: 0.99
+
 

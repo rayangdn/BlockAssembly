@@ -77,6 +77,14 @@ class AssemblyGymEnv(gym.Env):
         )
         
         self.reset()
+        
+        print("===================== ASSEMBLY GYM ENV =====================")
+        print(f"Task: {task}")
+        print(f"State Representation: {state_representation}, Reward Representation: {reward_representation}")
+        print(f"Max Blocks: {self.max_blocks}, Max Steps: {self.max_steps}")
+        print(f"Action Space Size: {self.action_space.n}, Observation Space Size: {self.observation_space.shape}")
+        print(f"Penalties: Invalid Action: {self.invalid_action_penalty}, Failed Placement: {self.failed_placement_penalty}, Truncated: {self.truncated_penalty}")
+        print("=============================================================")
     
     def _generate_action_mask(self,):
         
@@ -188,7 +196,6 @@ class AssemblyGymEnv(gym.Env):
         
         self.steps += 1
         step_reward = 0.0
-        
         truncated = (self.steps >= self.max_steps)
         if truncated:
             step_reward -= self.truncated_penalty
@@ -247,10 +254,10 @@ def main():
     
     # Create environment
     # task = Tower(targets=[(0,3.5), (-3.5, 2.5), (4.0, 2.5)], obstacles=[(0,0.5), (0, 1.5), (0, 2.5), (-1,0.5), (1,0.5), (-1,1.5), (-3.5, 0.5), (-3.5, 1.5), (4, 0.5), (4, 1.5)])
-
-    task = Bridge(num_stories=3)
-    max_blocks = 5
-    state_representation = 'multi_channels' # 'basic, 'intensity', 'multi_channels'
+    task = Tower(targets=[(1, 4), (0, 6), (-0.5, 2)], obstacles=[(1, 2), (-1.5, 5), (-1.5, 4), (2, 2), (1, 1)]) 
+    #task = Bridge(num_stories=3)
+    max_blocks = 10
+    state_representation = 'intensity' # 'basic, 'intensity', 'multi_channels'
     reward_representation = 'reshaped'
     
     wrapped_env = AssemblyGymEnv(
@@ -259,36 +266,27 @@ def main():
         state_representation=state_representation, 
         reward_representation=reward_representation
     )
-    obs, r, done, truncated, info = wrapped_env.step(3)
-    obs, r, done, truncated, info = wrapped_env.step(242)
-    obs, r, done, truncated, info = wrapped_env.step(312)
-    obs, r, done, truncated, info = wrapped_env.step(20)
-    obs, r, done, truncated, info = wrapped_env.step(788)
-    final_obs = obs
     
-    
-    
-    # done = False
-    # rewards = 0
-    # final_obs = None
-    # while not done:
+    done = False
+    rewards = 0
+    final_obs = None
+    while not done:
         
-    #     # Pick a random action
-    #     action = wrapped_env.env.random_action(wrapped_env.num_offsets, non_colliding=True, stable=True)
-    #     action_idx = wrapped_env._action_to_idx(action)
-    #     print(action_idx)
-    #     if action_idx is None:
-    #         print(f"Invalid action index {action_idx}, skipping...")
-    #         break
-    #     obs, r, done, truncated, info = wrapped_env.step(action_idx)
-    #     print(f"Step: {wrapped_env.steps}, Action: {action}, Reward: {r}, Info: {info}\n")
-    #     final_obs = obs
-    #     if done or truncated:
-    #         break
+        # Pick a random action
+        action = wrapped_env.env.random_action(wrapped_env.num_offsets, non_colliding=True, stable=True)
+        action_idx = wrapped_env._action_to_idx(action)
+        if action_idx is None:
+            print(f"Invalid action index {action_idx}, skipping...")
+            break
+        obs, r, done, truncated, info = wrapped_env.step(action_idx)
+        print(f"Step: {wrapped_env.steps}, Action: {action}, Reward: {r}, Info: {info}\n")
+        final_obs = obs
+        if done or truncated:
+            break
 
-    #     rewards += r
+        rewards += r
         
-    #wrapped_env.render(mode='human')
+    wrapped_env.render(mode='human')
     
     global_min = final_obs.min()
     global_max = final_obs.max()  

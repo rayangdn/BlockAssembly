@@ -15,57 +15,8 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.evaluation import evaluate_policy
 
 from assembly_gym_env import AssemblyGymEnv
-
-class InfoCallback(BaseCallback):
-
-    def __init__(self, verbose=0):
-        super(InfoCallback, self).__init__(verbose)
-        # Initialize counters for cumulative tracking
-        self.cumulative_invalid_actions = 0
-        self.cumulative_failed_placements = 0
-        self.total_steps = 0
-        self.total_available_steps = 0 # Counter for total available steps in the environment (where we succed to get an available action)
-        
-    def _on_step(self):
-        # Extract info from the most recent environment step
-        info = self.training_env.get_attr("info")[0]
-        self.total_steps += 1
-        
-        # Log targets reached
-        if "targets_reached" in info:
-            targets = info["targets_reached"]
-            # Extract numbers from format like "1/5"
-            if isinstance(targets, str) and '/' in targets:
-                current, total = map(int, targets.split('/'))
-                self.logger.record("env/targets_reached", current)
-        
-        # Log blocks placed
-        if "blocks_placed" in info:
-            self.logger.record("env/blocks_placed", info["blocks_placed"])
-        
-        # Log only cumulative invalid actions (no per-step)
-        if "is_invalid_action" in info:
-            if info["is_invalid_action"]:  
-                self.cumulative_invalid_actions += 1
-            else:
-                self.total_available_steps += 1
-            self.logger.record("env/cumulative_invalid_actions", self.cumulative_invalid_actions)
-            # Add rate of invalid actions (percentage)
-            if self.total_steps > 0:
-                invalid_rate = (self.cumulative_invalid_actions / self.total_steps) * 100
-                self.logger.record("env/invalid_action_rate", invalid_rate)
-            
-        # Log only cumulative failed placements (no per-step)
-        if "is_failed_placement" in info:
-            if info["is_failed_placement"]:
-                self.cumulative_failed_placements += 1
-            self.logger.record("env/cumulative_failed_placements", self.cumulative_failed_placements)
-            # Add rate of failed placements (percentage)
-            if self.total_available_steps > 0:
-                failure_rate = (self.cumulative_failed_placements / self.total_available_steps) * 100
-                self.logger.record("env/failed_placement_rate", failure_rate)
-        
-        return True
+from callbacks import InfoCallback, ReinforceEvalCallback
+from reinforce import ReinforceAgent, get_next_run_number
 
 def mask_fn(env):
     return env.get_action_masks()
@@ -162,6 +113,9 @@ def make_env(config, seed=None):
             reward_representation=env_config['reward_representation'],
         )
     
+    # Visualize the environment
+    # env.render(mode='human')
+    
     # Set seed if provided
     if seed is not None:
         env.seed(seed)
@@ -170,9 +124,6 @@ def make_env(config, seed=None):
     if env_config['use_action_masking']:
         env = ActionMasker(env, mask_fn)
         
-    # Visualize the environment
-    #env.render(mode='human')
-    
     return env
 
 def main():
@@ -201,18 +152,17 @@ def main():
 
     # Create the environment
     env = make_env(config, seed)
-    env = Monitor(env, log_dir)
-    
-    # Create an evaluation environment
     eval_env = make_env(config)
-    eval_env = Monitor(eval_env, os.path.join(log_dir, "eval"))
     
     # Get agent from config
     agent_config = config['agent'][agent_type].copy()
     
-    # Extract policy kwargs
-    policy_kwargs = agent_config.pop('policy_kwargs')
-    policy = agent_config.pop('policy')
+    # Extract policy kwargs if not using REINFORCE
+    if agent_type != 'reinforce_masking':
+        env = Monitor(env, log_dir)
+        eval_env = Monitor(eval_env, os.path.join(log_dir, "eval"))
+        policy_kwargs = agent_config.pop('policy_kwargs')
+        policy = agent_config.pop('policy')
     
     # Total timesteps for training from config
     total_timesteps = config['agent']['total_timesteps']
@@ -239,7 +189,6 @@ def main():
             deterministic=True,
             render=False
         )
-        
     elif agent_type == 'ppo':
         print("Using PPO agent")
         model = PPO(
@@ -292,7 +241,39 @@ def main():
             deterministic=True,
             render=False
         )
+    elif agent_type == 'reinforce_masking':
+        print("Using Maskable REINFORCE agent")
+        # Make sure environment has action masking enabled
+        if not config['env']['use_action_masking']:
+            print("Warning: Using ppo_masking but action masking is not enabled in environment config.")
+            print("Enabling action masking automatically.")
+            # Recreate environments with masking
+            env = ActionMasker(env, mask_fn)
+            eval_env = ActionMasker(eval_env, mask_fn)
+            
+        agent_dir_name = "REINFORCE"
+        run_number = get_next_run_number(tensorboard_log, agent_dir_name)
+        run_name = f"{agent_dir_name}_{run_number}"
+        agent_tensorboard_log = os.path.join(tensorboard_log, run_name)
         
+        model = ReinforceAgent(
+            env,
+            learning_rate=agent_config['learning_rate'],
+            gamma=agent_config['gamma'],
+            tensorboard_log=agent_tensorboard_log,
+            verbose=config['agent']['verbose'],
+            device='cuda' if torch.cuda.is_available() else 'cpu'
+        )
+        
+        # Create evaluation callback for REINFORCE
+        eval_callback = ReinforceEvalCallback(
+            eval_env=eval_env,
+            best_model_save_path=os.path.join(model_dir, "best_model"),
+            log_path=os.path.join(log_dir, "eval_results"),
+            eval_freq=5000,
+            n_eval_episodes=5,
+            deterministic=True
+        )
     else:
         raise ValueError(f"Unknown agent type: {agent_type}")
     
@@ -304,7 +285,7 @@ def main():
     )
 
     # Set up the info callback
-    info_callback = InfoCallback()
+    info_callback = InfoCallback(agent_type=agent_type)
     
     # Combine all callbacks
     callbacks = CallbackList([checkpoint_callback, eval_callback, info_callback])
@@ -331,13 +312,16 @@ def main():
             n_eval_episodes=10,
             deterministic=True
         )
-    else:
+    elif agent_type == 'ppo' or agent_type == 'dqn':
         mean_reward, std_reward = evaluate_policy(
             model,
             eval_env,
             n_eval_episodes=10,
             deterministic=True
         )
+    else:
+        mean_reward = None
+        std_reward = None
         
     print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
     
