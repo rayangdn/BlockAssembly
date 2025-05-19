@@ -16,7 +16,8 @@ from stable_baselines3.common.evaluation import evaluate_policy
 
 from assembly_gym_env import AssemblyGymEnv
 from callbacks import InfoCallback, ReinforceEvalCallback
-from reinforce import ReinforceAgent, get_next_run_number
+from reinforce import ReinforceAgent, get_next_run_number, reinforce_evaluate_policy
+
 
 def mask_fn(env):
     return env.get_action_masks()
@@ -309,14 +310,21 @@ def main():
         mean_reward, std_reward = maskable_evaluate_policy(
             model,
             eval_env,
-            n_eval_episodes=10,
+            n_eval_episodes=3,
             deterministic=True
         )
     elif agent_type == 'ppo' or agent_type == 'dqn':
         mean_reward, std_reward = evaluate_policy(
             model,
             eval_env,
-            n_eval_episodes=10,
+            n_eval_episodes=3,
+            deterministic=True
+        )
+    elif agent_type == 'reinforce_masking':
+        mean_reward, std_reward = reinforce_evaluate_policy(
+            model, 
+            eval_env,
+            n_eval_episodes=3,
             deterministic=True
         )
     else:

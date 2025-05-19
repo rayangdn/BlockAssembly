@@ -247,3 +247,38 @@ def get_next_run_number(base_dir, agent_type):
         return 1
     else:
         return max(existing_runs) + 1
+    
+def reinforce_evaluate_policy(model, env, n_eval_episodes=10, deterministic=True):
+    episode_rewards = []
+    episode_lengths = []
+    
+    for i in range(n_eval_episodes):
+        # Reset the environment
+        obs, _ = env.reset()
+        done = False
+        episode_reward = 0.0
+        episode_length = 0
+        
+        # Run one episode
+        while not done:
+            
+            # Get the action from the model
+            action, _ = model.predict(obs, deterministic=deterministic)
+            
+            # Execute the action in the environment
+            obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            
+            # Update episode rewards and length
+            episode_reward += reward
+            episode_length += 1
+                
+        # Append episode statistics
+        episode_rewards.append(episode_reward)
+        episode_lengths.append(episode_length)
+        
+    # Compute statistics
+    mean_reward = np.mean(episode_rewards)
+    std_reward = np.std(episode_rewards)
+    
+    return mean_reward, std_reward

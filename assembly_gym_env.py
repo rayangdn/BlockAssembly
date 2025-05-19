@@ -9,10 +9,9 @@ import matplotlib.pyplot as plt
 import random
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
-from tasks import Bridge, Tower
+from tasks import Bridge, Tower, DoubleBridge
 from assembly_env import AssemblyEnv, Action
 from rendering import plot_assembly_env
-from blocks import Floor
 
 class AssemblyGymEnv(gym.Env):
     """Gym wrapper for the BlockAssembly environment"""
@@ -254,9 +253,10 @@ def main():
     
     # Create environment
     # task = Tower(targets=[(0,3.5), (-3.5, 2.5), (4.0, 2.5)], obstacles=[(0,0.5), (0, 1.5), (0, 2.5), (-1,0.5), (1,0.5), (-1,1.5), (-3.5, 0.5), (-3.5, 1.5), (4, 0.5), (4, 1.5)])
-    task = Tower(targets=[(1, 4), (0, 6), (-0.5, 2)], obstacles=[(1, 2), (-1.5, 5), (-1.5, 4), (2, 2), (1, 1)]) 
+    task = DoubleBridge(num_stories=1) 
     #task = Bridge(num_stories=3)
-    max_blocks = 10
+    
+    max_blocks = 7
     state_representation = 'intensity' # 'basic, 'intensity', 'multi_channels'
     reward_representation = 'reshaped'
     
@@ -285,35 +285,32 @@ def main():
             break
 
         rewards += r
-        
     wrapped_env.render(mode='human')
     
-    global_min = final_obs.min()
-    global_max = final_obs.max()  
-    if state_representation == 'multi_channels':
-        # Create a figure with subplots
-        fig, axes = plt.subplots(3, 3, figsize=(10, 10))
-        axes = axes.flatten()
+    # global_min = final_obs.min()
+    # global_max = final_obs.max()  
+    # if state_representation == 'multi_channels':
+    #     # Create a figure with subplots
+    #     fig, axes = plt.subplots(3, 3, figsize=(10, 10))
+    #     axes = axes.flatten()
 
-        # Plot each channel
-        for i in range(wrapped_env.max_blocks + 4):
-            axes[i].imshow(final_obs[i], cmap='viridis', vmin=global_min, vmax=global_max)
-            axes[i].set_title(f'Channel {i+1}')
-            axes[i].axis('off') 
+    #     # Plot each channel
+    #     for i in range(wrapped_env.max_blocks + 4):
+    #         axes[i].imshow(final_obs[i], cmap='viridis', vmin=global_min, vmax=global_max)
+    #         axes[i].set_title(f'Channel {i+1}')
+    #         axes[i].axis('off') 
 
-        plt.tight_layout()
-        plt.show()
-    else:
-        # Plot the single channel
-        plt.imshow(final_obs.reshape(64, 64, 1), cmap='viridis', vmin=global_min, vmax=global_max)
-        plt.title('State Feature')
-        plt.colorbar()
-        plt.show()
+    #     plt.tight_layout()
+    #     plt.show()
+    # else:
+    #     # Plot the single channel
+    #     plt.imshow(final_obs.reshape(64, 64, 1), cmap='viridis', vmin=global_min, vmax=global_max)
+    #     plt.title('State Feature')
+    #     plt.colorbar()
+    #     plt.show()
     
     # plt.imshow(wrapped_env.env.reward_feature, cmap='viridis')
     # plt.show()
-    
-    
     
 if __name__ == "__main__":
     main()

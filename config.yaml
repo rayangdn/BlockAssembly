@@ -13,9 +13,9 @@ env:
   density: 1.0
 
   # Penalty and Reward Settings
-  invalid_action_penalty: -0.5
-  failed_placement_penalty: -0.5
-  truncated_penalty: -0.5
+  invalid_action_penalty: 0.5
+  failed_placement_penalty: 0.5
+  truncated_penalty: 0.5
 
   # Episode Configuration
   max_steps: 20
@@ -71,7 +71,7 @@ agent:
 
   # Common Parameters
   verbose: 1
-  use_agent: 'dqn'  # Options: "dqn", "ppo", "ppo_masking", "reinforce_masking"
+  use_agent: 'ppo'  # Options: "dqn", "ppo", "ppo_masking", "reinforce_masking"
 
   # Training Parameters
   total_timesteps: 100000
