@@ -14,3 +14,7 @@
 **/.tox/
 **/.coverage.*
 **/logs/
+wandb/
+logs/
+log/
+.DS_Store

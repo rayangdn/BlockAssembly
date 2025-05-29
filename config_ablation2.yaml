@@ -22,7 +22,7 @@ env:
 
   # Representation Settings
   state_representation: "intensity"   # Options: "basic", "intensity", "multi_channels"
-  reward_representation: "reshaped"  # Options: "basic", "reshaped"
+  reward_representation: "basic"  # Options: "basic", "reshaped"
 
   # Action Masking
   use_action_masking: True  # Set to True to enable action masking for PPO

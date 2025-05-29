@@ -21,7 +21,7 @@ env:
   max_steps: 20
 
   # Representation Settings
-  state_representation: "intensity"   # Options: "basic", "intensity", "multi_channels"
+  state_representation: "multi_channels"   # Options: "basic", "intensity", "multi_channels"
   reward_representation: "reshaped"  # Options: "basic", "reshaped"
 
   # Action Masking

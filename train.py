@@ -128,9 +128,13 @@ def make_env(config, seed=None):
     return env
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Train an agent on AssemblyGymEnv")
+    parser.add_argument('--config', type=str, default='config.yaml', help='Path to the configuration file')
+    args = parser.parse_args()
     
     # Load configuration
-    with open('config.yaml', 'r') as file:
+    with open(args.config, 'r') as file:
         config = yaml.safe_load(file)
         
     # Set random seed for reproducibility
