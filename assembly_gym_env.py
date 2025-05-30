@@ -309,8 +309,8 @@ def main():
     #     plt.colorbar()
     #     plt.show()
     
-    # plt.imshow(wrapped_env.env.reward_feature, cmap='viridis')
-    # plt.show()
+    plt.imshow(wrapped_env.env.reward_feature, cmap='viridis')
+    plt.show()
     
 if __name__ == "__main__":
     main()
