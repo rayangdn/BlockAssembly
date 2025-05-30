@@ -1,4 +1,4 @@
-name: "myenv"
+name: "block_assembly"
 channels:
   - conda-forge
   - pytorch

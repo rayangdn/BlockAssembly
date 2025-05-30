@@ -22,7 +22,7 @@ for a in env.available_actions(num_block_offsets=5):
         print(a)
     env.delete_block(list(env.nodes())[-1])
 
-if 0:
+if False:
     action = Action(target_block=1, target_face=3, shape=5, face = 2, offset_x = -0.)
     obs, r, done = env.step(action)
 
@@ -32,7 +32,7 @@ if 0:
     action = Action(target_block=3, target_face=3, shape=5, face = 1, offset_x = 0.)
     obs, r, done = env.step(action)
 
-if 0:
+if False:
     action = Action(target_block=0, target_face=0, shape=1, face = 0, offset_x = -1.5)
     obs, r, done = env.step(action)
     print(r)

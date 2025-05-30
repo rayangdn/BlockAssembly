@@ -1,6 +1,6 @@
 In order to run the scripts, install a virtual environment using the environment.yml file:
 
-conda create --name myenv --file=environment.yml
+conda env create -f environment.yml
 conda activate myenv
 
 Then, copy the files rbe_pyomo.py, cra_helper.py and pyomo_helper.py in DIR/anaconda/envs/myenv/lib/python3.10/site-packages/compas_cra/equilibrium where DIR points to your anaconda installation folder (they should replace existing files).
